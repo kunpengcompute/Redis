@@ -1,15 +1,29 @@
-From 0fa28d57f43bc71c14fe9df977b88d52f5a65698 Mon Sep 17 00:00:00 2001
-From: hujinfei <15888467+hujinfei123@user.noreply.gitee.com>
-Date: Mon, 1 Sep 2025 10:33:02 +0800
+From e61ba6a20c2bea441d7773a28eaf264fd70ea1e4 Mon Sep 17 00:00:00 2001
+From: wuzhihao <w00933190@china.huawei.com>
+Date: Fri, 5 Sep 2025 15:57:50 +0800
 Subject: [PATCH] redis-7.0.15-adapt-iouring
 
 ---
+ redis.conf       |   2 +-
  src/Makefile     |   2 +-
  src/networking.c | 291 ++++++++++++++++++++++++++---------------------
  src/server.c     |   3 +-
  src/server.h     |   2 +-
- 4 files changed, 166 insertions(+), 132 deletions(-)
+ 5 files changed, 167 insertions(+), 133 deletions(-)
 
+diff --git a/redis.conf b/redis.conf
+index 0431c37..cdf2ef4 100644
+--- a/redis.conf
++++ b/redis.conf
+@@ -144,7 +144,7 @@ port 6379
+ # will silently truncate it to the value of /proc/sys/net/core/somaxconn so
+ # make sure to raise both the value of somaxconn and tcp_max_syn_backlog
+ # in order to get the desired effect.
+-tcp-backlog 511
++tcp-backlog 2048
+ 
+ # Unix socket.
+ #
 diff --git a/src/Makefile b/src/Makefile
 index e4f7d90..ef25b03 100644
 --- a/src/Makefile
@@ -410,5 +424,5 @@ index 82e4db9..94fe080 100644
  #define AOF_OFF 0             /* AOF is off */
  #define AOF_ON 1              /* AOF is on */
 -- 
-2.50.1.windows.1
+2.27.0
 
