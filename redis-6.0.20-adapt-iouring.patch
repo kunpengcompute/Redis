@@ -1,6 +1,6 @@
-From d5e7359a9a2d66a38f945912815fe5bd6cc43e1d Mon Sep 17 00:00:00 2001
+From ac1ddfcf5be8c841bd59a0a5beffd4a0c4f4550c Mon Sep 17 00:00:00 2001
 From: hujinfei <hujinfei3@huawei.com>
-Date: Fri, 5 Sep 2025 15:48:42 +0800
+Date: Tue, 9 Sep 2025 10:04:05 +0800
 Subject: [PATCH] redis-6.0.20-adapt-iouring
 
 ---
@@ -24,7 +24,7 @@ index 97f8180..f3b595d 100644
  # Unix socket.
  #
 diff --git a/src/Makefile b/src/Makefile
-index 691d543..ae2f0a1 100644
+index 691d543..42d1f78 100644
 --- a/src/Makefile
 +++ b/src/Makefile
 @@ -154,7 +154,7 @@ ifeq ($(uname_S),Haiku)
@@ -32,19 +32,19 @@ index 691d543..ae2f0a1 100644
  	# All the other OSes (notably Linux)
  	FINAL_LDFLAGS+= -rdynamic
 -	FINAL_LIBS+=-ldl -pthread -lrt
-+	FINAL_LIBS+=-ldl -pthread -lrt -lkbaio2
++	FINAL_LIBS+=-ldl -pthread -lrt -lkbaio
  endif
  endif
  endif
 diff --git a/src/networking.c b/src/networking.c
-index af6e0a8..aae5cfb 100644
+index af6e0a8..2adafc2 100644
 --- a/src/networking.c
 +++ b/src/networking.c
 @@ -34,6 +34,7 @@
  #include <sys/uio.h>
  #include <math.h>
  #include <ctype.h>
-+#include "kbaio2.h"
++#include "kbaio.h"
  
  static void setProtocolError(const char *errstr, client *c);
  int postponeClientRead(client *c);
