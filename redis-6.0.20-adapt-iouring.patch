@@ -32,7 +32,7 @@ index 691d543..42d1f78 100644
  	# All the other OSes (notably Linux)
  	FINAL_LDFLAGS+= -rdynamic
 -	FINAL_LIBS+=-ldl -pthread -lrt
-+	FINAL_LIBS+=-ldl -pthread -lrt -lkbaio
++	FINAL_LIBS+=-ldl -pthread -lrt -lkraio
  endif
  endif
  endif
@@ -44,7 +44,7 @@ index af6e0a8..2adafc2 100644
  #include <sys/uio.h>
  #include <math.h>
  #include <ctype.h>
-+#include "kbaio.h"
++#include "kraio.h"
  
  static void setProtocolError(const char *errstr, client *c);
  int postponeClientRead(client *c);
