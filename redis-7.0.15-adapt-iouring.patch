@@ -1,17 +1,31 @@
-From 0fa28d57f43bc71c14fe9df977b88d52f5a65698 Mon Sep 17 00:00:00 2001
-From: hujinfei <15888467+hujinfei123@user.noreply.gitee.com>
-Date: Mon, 1 Sep 2025 10:33:02 +0800
+From dffea86b2e19be2d26bbbb2621b1ef029c3cbf5d Mon Sep 17 00:00:00 2001
+From: wuzhihao <w00933190@china.huawei.com>
+Date: Tue, 9 Sep 2025 09:58:16 +0800
 Subject: [PATCH] redis-7.0.15-adapt-iouring
 
 ---
+ redis.conf       |   2 +-
  src/Makefile     |   2 +-
  src/networking.c | 291 ++++++++++++++++++++++++++---------------------
  src/server.c     |   3 +-
  src/server.h     |   2 +-
- 4 files changed, 166 insertions(+), 132 deletions(-)
+ 5 files changed, 167 insertions(+), 133 deletions(-)
 
+diff --git a/redis.conf b/redis.conf
+index 0431c37..cdf2ef4 100644
+--- a/redis.conf
++++ b/redis.conf
+@@ -144,7 +144,7 @@ port 6379
+ # will silently truncate it to the value of /proc/sys/net/core/somaxconn so
+ # make sure to raise both the value of somaxconn and tcp_max_syn_backlog
+ # in order to get the desired effect.
+-tcp-backlog 511
++tcp-backlog 2048
+ 
+ # Unix socket.
+ #
 diff --git a/src/Makefile b/src/Makefile
-index e4f7d90..ef25b03 100644
+index e4f7d90..2506c29 100644
 --- a/src/Makefile
 +++ b/src/Makefile
 @@ -202,7 +202,7 @@ ifeq ($(uname_S),Haiku)
@@ -19,19 +33,19 @@ index e4f7d90..ef25b03 100644
  	# All the other OSes (notably Linux)
  	FINAL_LDFLAGS+= -rdynamic
 -	FINAL_LIBS+=-ldl -pthread -lrt
-+	FINAL_LIBS+=-ldl -pthread -lrt -lkbaio2
++	FINAL_LIBS+=-ldl -pthread -lrt -lkraio
  endif
  endif
  endif
 diff --git a/src/networking.c b/src/networking.c
-index 90cc64d..217bb9c 100644
+index 90cc64d..da9597d 100644
 --- a/src/networking.c
 +++ b/src/networking.c
 @@ -35,11 +35,12 @@
  #include <sys/uio.h>
  #include <math.h>
  #include <ctype.h>
-+#include <kbaio2.h>
++#include "kraio.h"
  
  static void setProtocolError(const char *errstr, client *c);
  int postponeClientRead(client *c);
@@ -410,5 +424,5 @@ index 82e4db9..94fe080 100644
  #define AOF_OFF 0             /* AOF is off */
  #define AOF_ON 1              /* AOF is on */
 -- 
-2.50.1.windows.1
+2.27.0
 
