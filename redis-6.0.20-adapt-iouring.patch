@@ -1,43 +1,29 @@
-From ac1ddfcf5be8c841bd59a0a5beffd4a0c4f4550c Mon Sep 17 00:00:00 2001
+From af0a3eef6296a790280435a7735c59c1114ec77a Mon Sep 17 00:00:00 2001
 From: hujinfei <hujinfei3@huawei.com>
-Date: Tue, 9 Sep 2025 10:04:05 +0800
-Subject: [PATCH] redis-6.0.20-adapt-iouring
+Date: Thu, 17 Jul 2025 11:52:34 +0800
+Subject: [PATCH] redis-6.0.20 adapt iouring
 
 ---
- redis.conf       |  2 +-
  src/Makefile     |  2 +-
  src/networking.c | 56 ++++++++++++++++++++++++++++--------------------
  src/server.h     |  1 +
- 4 files changed, 36 insertions(+), 25 deletions(-)
+ 3 files changed, 35 insertions(+), 24 deletions(-)
 
-diff --git a/redis.conf b/redis.conf
-index 97f8180..f3b595d 100644
---- a/redis.conf
-+++ b/redis.conf
-@@ -97,7 +97,7 @@ port 6379
- # will silently truncate it to the value of /proc/sys/net/core/somaxconn so
- # make sure to raise both the value of somaxconn and tcp_max_syn_backlog
- # in order to get the desired effect.
--tcp-backlog 511
-+tcp-backlog 2048
- 
- # Unix socket.
- #
 diff --git a/src/Makefile b/src/Makefile
-index 691d543..42d1f78 100644
+index 691d543..7012473 100644
 --- a/src/Makefile
 +++ b/src/Makefile
-@@ -154,7 +154,7 @@ ifeq ($(uname_S),Haiku)
- else
- 	# All the other OSes (notably Linux)
- 	FINAL_LDFLAGS+= -rdynamic
--	FINAL_LIBS+=-ldl -pthread -lrt
-+	FINAL_LIBS+=-ldl -pthread -lrt -lkraio
- endif
- endif
- endif
+@@ -299,7 +299,7 @@ endif
+ 
+ # redis-server
+ $(REDIS_SERVER_NAME): $(REDIS_SERVER_OBJ)
+-	$(REDIS_LD) -o $@ $^ ../deps/hiredis/libhiredis.a ../deps/lua/src/liblua.a $(FINAL_LIBS)
++	$(REDIS_LD) -o $@ $^ ../deps/hiredis/libhiredis.a ../deps/lua/src/liblua.a -lkraio $(FINAL_LIBS)
+ 
+ # redis-sentinel
+ $(REDIS_SENTINEL_NAME): $(REDIS_SERVER_NAME)
 diff --git a/src/networking.c b/src/networking.c
-index af6e0a8..2adafc2 100644
+index af6e0a8..0827518 100644
 --- a/src/networking.c
 +++ b/src/networking.c
 @@ -34,6 +34,7 @@
@@ -164,5 +150,5 @@ index 8bd00f8..76e8fce 100644
  /* Client block type (btype field in client structure)
   * if CLIENT_BLOCKED flag is set. */
 -- 
-2.27.0
+2.33.0
 
