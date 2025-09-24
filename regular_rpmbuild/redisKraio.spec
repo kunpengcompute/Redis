@@ -32,6 +32,32 @@ This package includes:
 - Patched Redis 7.0.15 with io_uring support
 
 %prep
+# ========================================
+# 1. 必须是 openEuler 22.03 SP4
+# ========================================
+%if ! (echo %{?dist} | grep -q 'oe2203sp4')
+%fatal This package requires openEuler 22.03 LTS SP4 (detected: %{?dist})
+%endif
+
+# ========================================
+# 2. 检查内核版本 >= 5.10.0-275.0.0.178
+# ========================================
+%global kernel_full %(uname -r)
+%global kernel_major %(echo %{kernel_full} | cut -d. -f1)
+%global kernel_minor %(echo %{kernel_full} | cut -d. -f2)
+%global kernel_teeny %(echo %{kernel_full} | cut -d. -f3 | cut -d- -f1)
+%global kernel_patch %(echo %{kernel_full} | sed -r 's/.*-([0-9]+)\..*/\1/' || echo 0)
+%global kernel_extra %(echo %{kernel_full} | sed -r 's/.*-275\.0\.0\.([0-9]+).*/\1/' | grep -E '^[0-9]+$' || echo 0)
+
+%if %{kernel_major} < 5 || \
+    (%{kernel_major} == 5 && %{kernel_minor} < 10) || \
+    (%{kernel_major} == 5 && %{kernel_minor} == 10 && %{kernel_teeny} == 0 && %{kernel_patch} < 275) || \
+    (%{kernel_major} == 5 && %{kernel_minor} == 10 && %{kernel_teeny} == 0 && %{kernel_patch} == 275 && %{kernel_extra} < 178)
+%fatal Kernel version %{kernel_full} is too old. Requires >= 5.10.0-275.0.0.178 on openEuler 22.03 SP4.
+%endif
+
+echo "✅ Environment check passed: openEuler 22.03 SP4 with supported kernel"
+
 %setup -T -c -n redis-kraio
 
 # 创建平台目录
