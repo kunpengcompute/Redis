@@ -1,0 +1,290 @@
+From db5096f67770fc7e2607f28abd8da4a685a4171a Mon Sep 17 00:00:00 2001
+From: Vchanger <chenzhen126@huawei.com>
+Date: Tue, 9 Sep 2025 22:58:03 +0800
+Subject: [PATCH] redis 7.0.15 adapt iouring
+
+---
+ src/Makefile     |   2 +-
+ src/networking.c | 171 +++++++++++++++++++++++++++++++++++++++++++++++
+ src/server.c     |   3 +-
+ src/server.h     |   1 +
+ 4 files changed, 175 insertions(+), 2 deletions(-)
+
+diff --git a/src/Makefile b/src/Makefile
+index e4f7d90..23981fb 100644
+--- a/src/Makefile
++++ b/src/Makefile
+@@ -371,7 +371,7 @@ endif
+
+ # redis-server
+ $(REDIS_SERVER_NAME): $(REDIS_SERVER_OBJ)
+-	$(REDIS_LD) -o $@ $^ ../deps/hiredis/libhiredis.a ../deps/lua/src/liblua.a ../deps/hdr_histogram/libhdrhistogram.a $(FINAL_LIBS)
++	$(REDIS_LD) -o $@ $^ ../deps/hiredis/libhiredis.a ../deps/lua/src/liblua.a ../deps/hdr_histogram/libhdrhistogram.a -lkraio $(FINAL_LIBS)
+
+ # redis-sentinel
+ $(REDIS_SENTINEL_NAME): $(REDIS_SERVER_NAME)
+diff --git a/src/networking.c b/src/networking.c
+index 90cc64d..c6485cc 100644
+--- a/src/networking.c
++++ b/src/networking.c
+@@ -35,10 +35,12 @@
+ #include <sys/uio.h>
+ #include <math.h>
+ #include <ctype.h>
++#include <kraio.h>
+
+ static void setProtocolError(const char *errstr, client *c);
+ int postponeClientRead(client *c);
+ int ProcessingEventsWhileBlocked = 0; /* See processEventsWhileBlocked(). */
++typedef void (*handle_callback_t)(client *c, ssize_t *nwritten);
+
+ /* Return the size consumed from the allocator, for the specified SDS string,
+  * including internal fragmentation. This function is used in order to compute
+@@ -1816,6 +1818,152 @@ client *lookupClientByID(uint64_t id) {
+     return (c == raxNotFound) ? NULL : c;
+ }
+
++int callback_before_common(client *c, ssize_t *nwritten) {
++    if (*nwritten <= 0) return C_ERR;
++    if (getClientType(c) == CLIENT_TYPE_SLAVE) {
++        serverAssert(c->bufpos == 0 && listLength(c->reply) == 0);
++
++        replBufBlock *o = listNodeValue(c->ref_repl_buf_node);
++        serverAssert(o->used >= c->ref_block_pos);
++        /* Send current block if it is not fully sent. */
++        if (o->used > c->ref_block_pos) {
++            c->ref_block_pos += *nwritten;
++        }
++
++        /* If we fully sent the object on head, go to the next one. */
++        listNode *next = listNextNode(c->ref_repl_buf_node);
++        if (next && c->ref_block_pos == o->used) {
++            o->refcount--;
++            ((replBufBlock *)(listNodeValue(next)))->refcount++;
++            c->ref_repl_buf_node = next;
++            c->ref_block_pos = 0;
++            incrementalTrimReplicationBacklog(REPL_BACKLOG_TRIM_BLOCKS_PER_CALL);
++        }
++        return C_OK;
++    }
++    return C_OK;
++}
++
++void callback_after_common(client *c, ssize_t *nwritten, ssize_t totwritten) {
++    if (getClientType(c) == CLIENT_TYPE_SLAVE) {
++        atomicIncr(server.stat_net_repl_output_bytes, totwritten);
++    } else {
++        atomicIncr(server.stat_net_output_bytes, totwritten);
++    }
++
++    if (*nwritten == -1 && errno != EAGAIN) {
++        c->conn->last_errno = errno;
++        if (errno != EINTR && connGetState(c->conn) == CONN_STATE_CONNECTED) {
++            c->conn->state = CONN_STATE_ERROR;
++            serverLog(LL_WARNING, "[Euler]Error writing to client: %s", connGetLastError(c->conn));
++            freeClientAsync(c);
++            return;
++        }
++    }
++
++    if (totwritten > 0) {
++        /* For clients representing masters we don't count sending data
++         * as an interaction, since we always send REPLCONF ACK commands
++         * that take some time to just fill the socket output buffer.
++         * We just rely on data / pings received for timeout detection. */
++        if (!(c->flags & CLIENT_MASTER)) c->lastinteraction = server.unixtime;
++    }
++
++    if (!clientHasPendingReplies(c)) {
++        c->sentlen = 0;
++
++        /* Close connection after entire reply has been sent. */
++        if (c->flags & CLIENT_CLOSE_AFTER_REPLY) {
++            freeClientAsync(c);
++            return;
++        }
++    } else {
++        writeToClient(c, 0);
++    }
++
++    if (io_threads_op == IO_THREADS_OP_IDLE)
++        updateClientMemUsageAndBucket(c);
++}
++
++void handle_writev_callback(client *c, ssize_t *nwritten) {
++    if (*nwritten <= 0) return;
++    /* Locate the new node which has leftover data and
++     * release all nodes in front of it. */
++    ssize_t remaining = *nwritten;
++    listIter iter;
++    listNode *next;
++    clientReplyBlock *o;
++    if (c->bufpos > 0) { /* deal with static reply buffer first. */
++        int buf_len = c->bufpos - c->sentlen;
++        c->sentlen += remaining;
++        /* If the buffer was sent, set bufpos to zero to continue with
++         * the remainder of the reply. */
++        if (remaining >= buf_len) {
++            c->bufpos = 0;
++            c->sentlen = 0;
++
++        }
++        remaining -= buf_len;
++    }
++    listRewind(c->reply, &iter);
++    while (remaining > 0) {
++        next = listNext(&iter);
++        o = listNodeValue(next);
++        if (remaining < (ssize_t)(o->used - c->sentlen)) {
++            c->sentlen += remaining;
++            break;
++        }
++        remaining -= (ssize_t)(o->used - c->sentlen);
++        c->reply_bytes -= o->size;
++        listDelNode(c->reply, next);
++        c->sentlen = 0;
++    }
++}
++
++void handle_write_callback(client *c, ssize_t *nwritten) {
++    if (c->bufpos > 0) {
++        if (*nwritten <= 0) return;
++        c->sentlen += *nwritten;
++        /* If the buffer was sent, set bufpos to zero to continue with
++        * the remainder of the reply. */
++        if ((int)c->sentlen == c->bufpos) {
++            c->bufpos = 0;
++            c->sentlen = 0;
++        }
++    }
++}
++
++void write_callback_common(client *c, int ret, handle_callback_t handle_callback) {
++    atomicIncr(server.stat_total_writes_processed, 1);
++    ssize_t nwritten = 0, totwritten = 0;
++    c->flags &= ~CLIENT_ASYNC;
++    while(nwritten == 0) {
++        nwritten = ret;
++        if (ret == C_ERR) break;
++        callback_before_common(c, &nwritten);
++        handle_callback(c, &nwritten);
++        totwritten += nwritten;
++        if (totwritten > NET_MAX_WRITES_PER_EVENT &&
++            (server.maxmemory == 0 ||
++             zmalloc_used_memory() < server.maxmemory) &&
++            !(c->flags & CLIENT_SLAVE)) break;
++    }
++    callback_after_common(c, &nwritten, totwritten);
++}
++
++void writeCallback(int ret, __attribute__((unused))void *buf, __attribute__((unused))int len, void *para1, __attribute__((unused))void *para2, __attribute__((unused))void *para3) {
++    client *c = (client*) para1;
++    write_callback_common(c, ret, handle_write_callback);
++}
++
++void writevCallback(int ret, __attribute__((unused))struct iovec *iov, __attribute__((unused))int iovcnt, void *para1, __attribute__((unused))void *para2, __attribute__((unused))void *para3) {
++    client *c = (client*) para1;
++    write_callback_common(c, ret, handle_writev_callback);
++}
++
++__attribute__((constructor)) void registWriteCallback() {register_write_callback(writeCallback);}
++__attribute__((constructor)) void registWritevCallback() {register_writev_callback(writevCallback);}
++
+ /* This function should be called from _writeToClient when the reply list is not empty,
+  * it gathers the scattered buffers from reply list and sends them away with connWritev.
+  * If we write successfully, it returns C_OK, otherwise, C_ERR is returned,
+@@ -1854,6 +2002,11 @@ static int _writevToClient(client *c, ssize_t *nwritten) {
+         offset = 0;
+     }
+     if (iovcnt == 0) return C_OK;
++    int ret = writev_async(c->conn->fd, iov, iovcnt, c, NULL, NULL);
++    if (ret > 0) {
++        c->flags |= CLIENT_ASYNC;
++        return C_OK;
++    }
+     *nwritten = connWritev(c->conn, iov, iovcnt);
+     if (*nwritten <= 0) return C_ERR;
+
+@@ -1902,6 +2055,12 @@ int _writeToClient(client *c, ssize_t *nwritten) {
+         serverAssert(o->used >= c->ref_block_pos);
+         /* Send current block if it is not fully sent. */
+         if (o->used > c->ref_block_pos) {
++            int ret = write_async(c->conn->fd, o->buf+c->ref_block_pos,
++                                  o->used-c->ref_block_pos, c, NULL, NULL);
++            if (ret > 0) {
++                c->flags |= CLIENT_ASYNC;
++                return C_OK;
++            }
+             *nwritten = connWrite(c->conn, o->buf+c->ref_block_pos,
+                                   o->used-c->ref_block_pos);
+             if (*nwritten <= 0) return C_ERR;
+@@ -1924,6 +2083,7 @@ int _writeToClient(client *c, ssize_t *nwritten) {
+      * system calls and TCP packets. */
+     if (listLength(c->reply) > 0) {
+         int ret = _writevToClient(c, nwritten);
++        if (ret == C_OK && (c->flags & CLIENT_ASYNC)) return C_OK;
+         if (ret != C_OK) return ret;
+
+         /* If there are no longer objects in the list, we expect
+@@ -1931,6 +2091,11 @@ int _writeToClient(client *c, ssize_t *nwritten) {
+         if (listLength(c->reply) == 0)
+             serverAssert(c->reply_bytes == 0);
+     } else if (c->bufpos > 0) {
++        int ret = write_async(c->conn->fd, c->buf + c->sentlen, c->bufpos - c->sentlen, c, NULL, NULL);
++        if (ret > 0) {
++            c->flags |= CLIENT_ASYNC;
++            return C_OK;
++        }
+         *nwritten = connWrite(c->conn, c->buf + c->sentlen, c->bufpos - c->sentlen);
+         if (*nwritten <= 0) return C_ERR;
+         c->sentlen += *nwritten;
+@@ -1960,8 +2125,14 @@ int writeToClient(client *c, int handler_installed) {
+
+     ssize_t nwritten = 0, totwritten = 0;
+
++    if (c->flags & CLIENT_ASYNC)
++        return C_OK;
++
+     while(clientHasPendingReplies(c)) {
+         int ret = _writeToClient(c, &nwritten);
++        /* Always return ERR to avoid installing write handler in handleClientsWithPendingWrites() */
++        if (c->flags & CLIENT_ASYNC) return C_ERR;
++
+         if (ret == C_ERR) break;
+         totwritten += nwritten;
+         /* Note that we avoid to send more than NET_MAX_WRITES_PER_EVENT
+diff --git a/src/server.c b/src/server.c
+index 9ca360e..61a6443 100644
+--- a/src/server.c
++++ b/src/server.c
+@@ -1709,6 +1709,7 @@ void afterSleep(struct aeEventLoop *eventLoop) {
+             latencyAddSampleIfNeeded("module-acquire-GIL",latency);
+         }
+     }
++    freeClientsInAsyncFreeQueue();
+ }
+
+ /* =========================== Server initialization ======================== */
+@@ -2495,7 +2496,7 @@ void initServer(void) {
+     server.thp_enabled = 0;
+     server.cluster_drop_packet_filter = -1;
+     server.reply_buffer_peak_reset_time = REPLY_BUFFER_DEFAULT_PEAK_RESET_TIME;
+-    server.reply_buffer_resizing_enabled = 1;
++    server.reply_buffer_resizing_enabled = 0;
+     server.client_mem_usage_buckets = NULL;
+     resetReplicationBuffer();
+
+diff --git a/src/server.h b/src/server.h
+index 82e4db9..cec2599 100644
+--- a/src/server.h
++++ b/src/server.h
+@@ -288,6 +288,7 @@ extern int configOOMScoreAdjValuesDefaults[CONFIG_OOM_COUNT];
+ #define CMD_CHANNEL_SUBSCRIBE (1ULL<<12)   /* The command subscribes to channels */
+ #define CMD_CHANNEL_UNSUBSCRIBE (1ULL<<13) /* The command unsubscribes to channels */
+ #define CMD_CHANNEL_PUBLISH (1ULL<<14)     /* The command publishes to channels. */
++#define CLIENT_ASYNC (1ULL<<60)
+
+ /* AOF states */
+ #define AOF_OFF 0             /* AOF is off */
+--
+2.33.0
