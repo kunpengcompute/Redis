@@ -10,69 +10,75 @@ Source2:        libconfig-1.8.1.tar.gz
 Source3:        kraio.tar.gz
 Patch0:         redis-7.0.15-adapt-iouring.patch
 
-# 禁用 debuginfo 包
+# 禁用 debuginfo，避免 strip
 %global debug_package %{nil}
 %define __strip /bin/true
 %define debuginfo_packages %{nil}
 
 # 构建依赖
 BuildRequires:  gcc, make, wget, git, tar, patch, texinfo
-BuildRequires:  autoconf, automake, libtool
-BuildRequires:  libuuid-devel
+BuildRequires:  autoconf, automake, libtool, libuuid-devel
+BuildRequires:  liburing-devel, libconfig-devel, systemd-devel
 
 # 运行依赖
-Requires:      glibc >= 2.17
+Requires:       liburing, libconfig, systemd, glibc >= 2.17
+
+# 自定义平台目录名（如 aarch64-openEuler-linux-gnu）
+%define _target_platform %(uname -m)-openEuler-linux-gnu
+
+# 检查是否为 openEuler 22.03 SP4
+%define dist_check %(echo %{?dist} | grep -q 'oe2203sp4' && echo 1 || echo 0)
+
+# 获取当前内核版本并提取关键字段
+%global kernel_full %(uname -r)
+%global kernel_patch_base %(echo %{kernel_full} | awk -F'-' '{print $2}' | awk -F'.' '{print $1}' || echo 0)
+%global kernel_update_level %(echo %{kernel_full} | awk -F'[-.]' '{print $7}' | grep -E '^[0-9]+$' || echo 0)
 
 %description
-Redis with io_uring acceleration through kraio library.
-This package includes:
-- liburing 2.4
-- libconfig 1.8.1
-- kraio
+Redis with io_uring acceleration through the kraio library.
+This package provides:
 - Patched Redis 7.0.15 with io_uring support
+- Custom kraio library (libkraio.so) for integration
+- Configuration files for io_uring tuning
+
+Note: Depends on system-provided liburing and libconfig.
 
 %prep
-# ========================================
-# 1. 必须是 openEuler 22.03 SP4
-# ========================================
-%if ! (echo %{?dist} | grep -q 'oe2203sp4')
-%fatal This package requires openEuler 22.03 LTS SP4 (detected: %{?dist})
+echo "DEBUG: Building for dist = %{?dist}"
+echo "DEBUG: Kernel version = %{kernel_full}"
+echo "DEBUG: Expected base >= 275, got %{kernel_patch_base}"
+echo "DEBUG: Expected update >= 178, got %{kernel_update_level}"
+
+# 平台检查
+%if %{dist_check} != 1
+%fatal This package requires openEuler 22.03 LTS SP4 (detected: %{?dist}). Use --define 'dist .oe2203sp4'.
 %endif
 
-# ========================================
-# 2. 检查内核版本 >= 5.10.0-275.0.0.178
-# ========================================
-%global kernel_full %(uname -r)
-%global kernel_major %(echo %{kernel_full} | cut -d. -f1)
-%global kernel_minor %(echo %{kernel_full} | cut -d. -f2)
-%global kernel_teeny %(echo %{kernel_full} | cut -d. -f3 | cut -d- -f1)
-%global kernel_patch %(echo %{kernel_full} | sed -r 's/.*-([0-9]+)\..*/\1/' || echo 0)
-%global kernel_extra %(echo %{kernel_full} | sed -r 's/.*-275\.0\.0\.([0-9]+).*/\1/' | grep -E '^[0-9]+$' || echo 0)
-
-%if %{kernel_major} < 5 || \
-    (%{kernel_major} == 5 && %{kernel_minor} < 10) || \
-    (%{kernel_major} == 5 && %{kernel_minor} == 10 && %{kernel_teeny} == 0 && %{kernel_patch} < 275) || \
-    (%{kernel_major} == 5 && %{kernel_minor} == 10 && %{kernel_teeny} == 0 && %{kernel_patch} == 275 && %{kernel_extra} < 178)
-%fatal Kernel version %{kernel_full} is too old. Requires >= 5.10.0-275.0.0.178 on openEuler 22.03 SP4.
+# 内核检查
+%if %{kernel_patch_base} < 275
+%fatal Kernel base %{kernel_patch_base} < 275. Need 275.0.0.178+
 %endif
 
-echo "✅ Environment check passed: openEuler 22.03 SP4 with supported kernel"
+%if %{kernel_patch_base} == 275 && %{kernel_update_level} < 178
+%fatal Kernel update %{kernel_update_level} < 178. Need 275.0.0.178+
+%endif
 
+echo " All preconditions passed."
+
+# 创建工作目录结构
 %setup -T -c -n redis-kraio
-
-# 创建平台目录
 mkdir -p %{_target_platform}
 
 # 解压源码
 tar -xzf %{SOURCE0} -C %{_target_platform}
-tar -xzf %{SOURCE1} -C %{_target_platform}
-tar -xzf %{SOURCE2} -C %{_target_platform}
+tar -xzf %{SOURCE1} -C %{_target_platform}  # 仅用于编译，不安装
+tar -xzf %{SOURCE2} -C %{_target_platform}  # 仅用于编译，不安装
 tar -xzf %{SOURCE3} -C %{_target_platform}
 
 # 复制补丁
 cp %{PATCH0} .
 
-# 进入 Redis 目录并打补丁
+# 打补丁到 Redis
 cd %{_target_platform}/redis-%{version}
 cp ../../redis-7.0.15-adapt-iouring.patch .
 patch -p1 < redis-7.0.15-adapt-iouring.patch
@@ -81,17 +87,17 @@ patch -p1 < redis-7.0.15-adapt-iouring.patch
 cd %{_target_platform}
 TOP_DIR=$(pwd)
 
-# 构建 liburing
+# 构建 liburing（仅用于链接，不安装）
 cd liburing-2.4
 make clean
 make -j %{?_smp_mflags} CFLAGS="-g -O2 -fPIC"
 cd ..
 
-# 构建 libconfig
+# 构建 libconfig（仅用于链接，不安装）
 cd libconfig-1.8.1
 autoreconf --install --force
-./configure --prefix=%{buildroot}/usr --libdir=%{buildroot}%{_libdir} --disable-static CFLAGS="-g -O2"
-make -j %{?_smp_mflags}
+./configure --prefix=/usr --libdir=%{_libdir} --disable-static CFLAGS="-g -O2" >/dev/null
+make -j %{?_smp_mflags} >/dev/null
 cd ..
 
 # 构建 kraio
@@ -99,78 +105,67 @@ cd kraio
 ln -sf $TOP_DIR/liburing-2.4/src/include/liburing.h include/liburing.h
 make clean
 make CC=gcc \
-     CFLAGS="-Iinclude -g -O2" \
-     LDFLAGS="-shared -fPIC -L$TOP_DIR/liburing-2.4/src" \
-     LIBS="-luring -ldl -lconfig"
+     LDFLAGS="-shared -fPIC -L../liburing-2.4/src -L../libconfig-1.8.1/lib" \
+     LIBS="-luring -lconfig -ldl" \
+     CFLAGS="-fPIC -I../libconfig-1.8.1/lib -Iinclude"
 cd ..
 
-# 构建 Redis：关键！指定头文件和库路径
+# 构建 Redis
 cd redis-%{version}
-export CPPFLAGS="-I$TOP_DIR/kraio/include"
-export LDFLAGS="-L$TOP_DIR/kraio -Wl,-rpath,/usr/lib64"
-export LDLIBS="-lkraio -luring -ldl -lconfig"
-
-make -j %{?_smp_mflags}
-
+make -j %{?_smp_mflags} \
+     MALLOC=libc \
+     CFLAGS="-I../kraio/include" \
+     LDFLAGS="-L../kraio"
 %install
-# 清理构建根目录
+# 清理
 rm -rf %{buildroot}
 
-# 创建安装目录
+# 创建目标目录
 mkdir -p %{buildroot}%{_bindir}
 mkdir -p %{buildroot}%{_libdir}
 mkdir -p %{buildroot}%{_includedir}
 mkdir -p %{buildroot}%{_sysconfdir}/kraio
 mkdir -p %{buildroot}%{_sysconfdir}/ld.so.conf.d
 
+# 安装 kraio 库和头文件
+install -m 755 %{_target_platform}/kraio/libkraio.so %{buildroot}%{_libdir}/libkraio.so
+install -m 644 %{_target_platform}/kraio/include/kraio.h %{buildroot}%{_includedir}/kraio.h
+install -m 644 %{_target_platform}/kraio/conf/iouring.conf %{buildroot}%{_sysconfdir}/kraio/iouring.conf
+
+# 安装 ldconfig 配置
+echo '/usr/lib64' > %{buildroot}%{_sysconfdir}/ld.so.conf.d/kraio.conf
+
 # 安装 Redis 二进制
 cd %{_target_platform}/redis-%{version}
 install -m 755 src/redis-server %{buildroot}%{_bindir}/redis-server
-install -m 755 src/redis-benchmark %{buildroot}%{_bindir}/redis-benchmark
-install -m 755 src/redis-check-rdb %{buildroot}%{_bindir}/redis-check-rdb
-install -m 755 src/redis-check-aof %{buildroot}%{_bindir}/redis-check-aof
-install -m 755 src/redis-sentinel %{buildroot}%{_bindir}/redis-sentinel
-install -m 755 src/redis-cli %{buildroot}%{_bindir}/redis-cli
-install -m 644 redis.conf %{buildroot}%{_sysconfdir}/kraio/redis.conf.default
-
-# 安装 kraio 库和头文件
-cd %{_target_platform}
-install -m 755 kraio/libkraio.so %{buildroot}%{_libdir}/libkraio.so
-install -m 644 kraio/include/kraio.h %{buildroot}%{_includedir}/kraio.h
-install -m 644 kraio/conf/iouring.conf %{buildroot}%{_sysconfdir}/kraio/iouring.conf
-
-# 注册动态库路径
-echo '%{_libdir}' > %{buildroot}%{_sysconfdir}/ld.so.conf.d/kraio.conf
+install -m 755 src/redis-benchmark     %{buildroot}%{_bindir}/redis-benchmark
+install -m 755 src/redis-check-rdb     %{buildroot}%{_bindir}/redis-check-rdb
+install -m 755 src/redis-check-aof     %{buildroot}%{_bindir}/redis-check-aof
+install -m 755 src/redis-sentinel      %{buildroot}%{_bindir}/redis-sentinel
+install -m 755 src/redis-cli           %{buildroot}%{_bindir}/redis-cli
+install -m 644 redis.conf              %{buildroot}%{_sysconfdir}/kraio/redis.conf.default
 
 %post
-# 刷新动态库缓存
 /sbin/ldconfig
-
-# 创建配置目录（如果不存在）
-mkdir -p /etc/kraio
 
 # 首次安装提示
 if [ "$1" = "1" ]; then
-    echo "Redis with kraio installed."
-    echo "Please edit /etc/kraio/iouring.conf, especially:"
+    echo "Redis with kraio installed successfully."
+    echo "Please configure /etc/kraio/iouring.conf:"
     echo "  send_callback=1"
+    echo "Start Redis with: redis-server /etc/kraio/redis.conf.default"
 fi
 
 %postun
-# 刷新动态库缓存
-/sbin/ldconfig
-
-# 仅在完全卸载时清理
 if [ "$1" = "0" ]; then
     rm -f %{_sysconfdir}/ld.so.conf.d/kraio.conf
     /sbin/ldconfig
-    rmdir %{_sysconfdir}/kraio 2>/dev/null || :
 fi
 
 %files
 %defattr(-,root,root,-)
 
-# Redis 二进制
+# Redis binaries
 %{_bindir}/redis-server
 %{_bindir}/redis-benchmark
 %{_bindir}/redis-check-rdb
@@ -178,19 +173,15 @@ fi
 %{_bindir}/redis-sentinel
 %{_bindir}/redis-cli
 
-# kraio 库和头文件
+# kraio components
 %{_libdir}/libkraio.so
 %{_includedir}/kraio.h
 
-# 配置文件
+# Configuration
 %config(noreplace) %{_sysconfdir}/kraio/redis.conf.default
 %config(noreplace) %{_sysconfdir}/kraio/iouring.conf
-
-# 动态库配置
 %config %{_sysconfdir}/ld.so.conf.d/kraio.conf
 
 %changelog
-* Mon Sep 08 2025 admin <admin@localhost> - 7.0.15-1
-- Rebuilt with proper buildroot and RPM file management.
-- Fixed compilation by using CPPFLAGS/LDFLAGS instead of system cp.
-- Added proper ldconfig integration and uninstall logic.
+* Fri Sep 26 2025  jinzhiyuan <jinzhiyuan2@h-partners.com>- 7.0.15
+- Added redis-kraio spec
