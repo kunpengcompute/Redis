@@ -14,7 +14,7 @@
 构建 RPM 包前，需先将 spec 文件移入标准目录下。执行下面命令构建 RPM 包。
 ```shell
 cd /root/rpmbuild/SPECS
-rpmbuild -ba redisKraio.spec
+rpmbuild -ba redisKraio.spec --define  "dist .oe2203sp4"
 ```
 #### 安装RPM包
 构建结果在`/root/rpmbuild/RPMS/aarch64/`。
