@@ -1,6 +1,6 @@
-From 3d706374643ef61aaf1a1d998359a09f94f387b3 Mon Sep 17 00:00:00 2001
+From 674d12d9704cccdf0ba0a6c82fa34b39ed1f3737 Mon Sep 17 00:00:00 2001
 From: tingwang1 <920347125@qq.com>
-Date: Sat, 7 Feb 2026 19:07:21 +0800
+Date: Sat, 14 Feb 2026 11:41:39 +0800
 Subject: [PATCH] =?UTF-8?q?=E9=80=82=E9=85=8Ddtoe?=
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
@@ -9,16 +9,16 @@ Content-Transfer-Encoding: 8bit
 ---
  redis.conf          |   6 +-
  src/Makefile        |   4 +-
- src/ae.h            |   2 +
- src/ae_dtoe.c       | 501 ++++++++++++++++++++++++++++++++++++++++++++
- src/ae_epoll_dtoe.c | 156 ++++++++++++++
+ src/ae.h            |   1 +
+ src/ae_dtoe.c       | 499 ++++++++++++++++++++++++++++++++++++++++++++
+ src/ae_epoll_dtoe.c | 161 ++++++++++++++
  src/config.c        |  48 +++++
- src/connection.c    |  31 ++-
+ src/connection.c    |  60 +++++-
  src/connection.h    |   1 +
- src/networking.c    |   6 +
+ src/networking.c    |   5 +
  src/server.c        |  13 ++
  src/server.h        |   2 +
- 11 files changed, 761 insertions(+), 9 deletions(-)
+ 11 files changed, 785 insertions(+), 15 deletions(-)
  create mode 100644 src/ae_dtoe.c
  create mode 100644 src/ae_epoll_dtoe.c
 
@@ -44,7 +44,7 @@ index 0431c3742..b2603fcaf 100644
 + save ""
 + dtoe-ip ""
 diff --git a/src/Makefile b/src/Makefile
-index e4f7d9068..5983ab777 100644
+index e4f7d9068..fd22552fc 100644
 --- a/src/Makefile
 +++ b/src/Makefile
 @@ -316,7 +316,7 @@ endif
@@ -61,23 +61,15 @@ index e4f7d9068..5983ab777 100644
  # redis-server
  $(REDIS_SERVER_NAME): $(REDIS_SERVER_OBJ)
 -	$(REDIS_LD) -o $@ $^ ../deps/hiredis/libhiredis.a ../deps/lua/src/liblua.a ../deps/hdr_histogram/libhdrhistogram.a $(FINAL_LIBS)
-+	$(REDIS_LD) -o $@ $^ ../deps/hiredis/libhiredis.a ../deps/lua/src/liblua.a ../deps/hdr_histogram/libhdrhistogram.a $(FINAL_LIBS) -lkbdtoe
++	$(REDIS_LD) -o $@ $^ ../deps/hiredis/libhiredis.a ../deps/lua/src/liblua.a ../deps/hdr_histogram/libhdrhistogram.a $(FINAL_LIBS) -lkbdtoe -lknet_frame
  
  # redis-sentinel
  $(REDIS_SENTINEL_NAME): $(REDIS_SERVER_NAME)
 diff --git a/src/ae.h b/src/ae.h
-index 70ce8a2d5..1e43473d8 100644
+index 70ce8a2d5..149dd6dab 100644
 --- a/src/ae.h
 +++ b/src/ae.h
-@@ -46,6 +46,7 @@
-                            loop iteration. Useful when you want to persist
-                            things to disk before sending replies, and want
-                            to do that in a group fashion. */
-+#define AE_DTOE_DEL 8
- 
- #define AE_FILE_EVENTS (1<<0)
- #define AE_TIME_EVENTS (1<<1)
-@@ -53,6 +54,7 @@
+@@ -53,6 +53,7 @@
  #define AE_DONT_WAIT (1<<2)
  #define AE_CALL_BEFORE_SLEEP (1<<3)
  #define AE_CALL_AFTER_SLEEP (1<<4)
@@ -87,10 +79,10 @@ index 70ce8a2d5..1e43473d8 100644
  #define AE_DELETED_EVENT_ID -1
 diff --git a/src/ae_dtoe.c b/src/ae_dtoe.c
 new file mode 100644
-index 000000000..a4a644220
+index 000000000..1daea7e43
 --- /dev/null
 +++ b/src/ae_dtoe.c
-@@ -0,0 +1,501 @@
+@@ -0,0 +1,499 @@
 +/* A simple event-driven programming library. Originally I wrote this code
 + * for the Jim's event-loop (Jim is a Tcl interpreter) but later translated
 + * it in form of a library for easy reuse.
@@ -266,16 +258,14 @@ index 000000000..a4a644220
 +    if (mask & AE_WRITABLE) mask |= AE_BARRIER;
 +
 +    aeApiDelEvent(eventLoop, fd, mask);
-+    if (!(mask & AE_DTOE_DEL)) {
-+        fe->mask = fe->mask & (~mask);
-+        if (fd == eventLoop->maxfd && fe->mask == AE_NONE) {
-+            /* Update the max fd */
-+            int j;
++    fe->mask = fe->mask & (~mask);
++    if (fd == eventLoop->maxfd && fe->mask == AE_NONE) {
++        /* Update the max fd */
++        int j;
 +
-+            for (j = eventLoop->maxfd-1; j >= 0; j--)
-+                if (eventLoop->events[j].mask != AE_NONE) break;
-+            eventLoop->maxfd = j;
-+        }
++        for (j = eventLoop->maxfd-1; j >= 0; j--)
++            if (eventLoop->events[j].mask != AE_NONE) break;
++        eventLoop->maxfd = j;
 +    }
 +}
 +
@@ -594,10 +584,10 @@ index 000000000..a4a644220
 +}
 diff --git a/src/ae_epoll_dtoe.c b/src/ae_epoll_dtoe.c
 new file mode 100644
-index 000000000..79d123bcf
+index 000000000..6f5d7dea0
 --- /dev/null
 +++ b/src/ae_epoll_dtoe.c
-@@ -0,0 +1,156 @@
+@@ -0,0 +1,161 @@
 +/* Linux epoll(2) based ae.c module
 + *
 + * Copyright (c) 2009-2012, Salvatore Sanfilippo <antirez at gmail dot com>
@@ -713,14 +703,13 @@ index 000000000..79d123bcf
 +    aeApiState *state = eventLoop->apidata;
 +    int retval = 0, numevents = 0;
 +    int nr_event = 0;
-+    int j = 0;
 +    if (eventLoop->flags & AE_USED_DTOE_FEATURE) {
 +        struct knet_recv_events recv_events[DTOE_RECV_POLL_CNT]; // DTOE_RECV_POLL_CNT必须和knet_poll_recv_channel的值保持一致
 +        kbdtoe_thread_poll(0, recv_events, &nr_event);
 +        for (int i = 0; i < nr_event; ++i) {
-+            eventLoop->fired[j].fd = recv_events[i].sockfd;
-+            eventLoop->fired[j].mask |= AE_READABLE;
-+            j++;
++            eventLoop->fired[numevents].fd = recv_events[i].sockfd;
++            eventLoop->fired[numevents].mask |= AE_READABLE;
++            numevents++;
 +        }
 +        epoll_wait_count++;
 +        if (epoll_wait_count >= EPOLL_WAIT_TIMES) {
@@ -732,23 +721,29 @@ index 000000000..79d123bcf
 +            tvp ? (tvp->tv_sec*1000 + (tvp->tv_usec + 999)/1000) : -1);
 +    }
 +    if (retval > 0) {
-+        numevents = retval;
-+        for (; j < numevents; j++) {
++        for (int k = 0; k < retval; k++) {
 +            int mask = 0;
-+            struct epoll_event *e = state->events+j;
-+
++            struct epoll_event *e = state->events + k;
 +            if (e->events & EPOLLIN) mask |= AE_READABLE;
 +            if (e->events & EPOLLOUT) mask |= AE_WRITABLE;
 +            if (e->events & EPOLLERR) mask |= AE_WRITABLE|AE_READABLE;
 +            if (e->events & EPOLLHUP) mask |= AE_WRITABLE|AE_READABLE;
-+            eventLoop->fired[j].fd = e->data.fd;
-+            eventLoop->fired[j].mask = mask;
++            if (!knet_fd_is_offloaded(e->data.fd)) {
++                eventLoop->fired[numevents].fd = e->data.fd;
++                eventLoop->fired[numevents].mask = mask;
++                numevents++;
++            } else {
++                if (mask & AE_WRITABLE) {
++                    eventLoop->fired[numevents].fd = e->data.fd;
++                    eventLoop->fired[numevents].mask = AE_WRITABLE;
++                    numevents++;
++                }
++            }
 +        }
 +    } else if (retval == -1 && errno != EINTR) {
 +        panic("aeApiPoll: epoll_wait, %s", strerror(errno));
 +    }
-+
-+    return numevents + nr_event;
++    return numevents;
 +}
 +
 +static char *aeApiName(void) {
@@ -828,19 +823,45 @@ index bfb49ef9c..1ba67a4d8 100644
      /* SDS Configs */
      createSDSConfig("masterauth", NULL, MODIFIABLE_CONFIG | SENSITIVE_CONFIG, EMPTY_STRING_IS_NULL, server.masterauth, NULL, NULL, NULL),
 diff --git a/src/connection.c b/src/connection.c
-index f61ed2404..383091e98 100644
+index f61ed2404..7a9abd8fa 100644
 --- a/src/connection.c
 +++ b/src/connection.c
-@@ -148,8 +148,14 @@ void *connGetPrivateData(connection *conn) {
+@@ -138,33 +138,61 @@ void *connGetPrivateData(connection *conn) {
+     return conn->private_data;
+ }
+ 
++void connSocketDtoeCloseDoneCallback(int fd) {
++    connection *conn = server.el->events[fd].clientData;
++    // close(conn->fd);  // dtoe close 内部已经执行close 操作
++    conn->fd = -1;
++    conn->flags &=(~CONN_FLAG_DTOE);
++    if (connHasRefs(conn)) {
++        conn->flags |= CONN_FLAG_CLOSE_SCHEDULED;
++        return;
++    }
++    zfree(conn);
++}
++
++__attribute__((constructor)) void registerDtoeCloseDoneCallback() {
++    register_dtoe_close_done_callback(connSocketDtoeCloseDoneCallback);
++}
+ /* ------ Pure socket connections ------- */
+ 
+ /* A very incomplete list of implementation-specific calls.  Much of the above shall
+  * move here as we implement additional connection types.
+  */
+-
+ /* Close the connection and free resources. */
  static void connSocketClose(connection *conn) {
      if (conn->fd != -1) {
          aeDeleteFileEvent(server.el,conn->fd, AE_READABLE | AE_WRITABLE);
 -        close(conn->fd);
 -        conn->fd = -1;
-+        if ((conn->flags & CONN_FLAG_DTOE) && kbdtoe_is_conn_offload_success(conn->fd)) {
-+            kbdtoe_close(conn->fd);
-+            kbdtoe_conn_status_for_close(conn->fd);
-+            conn->flags &=(~CONN_FLAG_DTOE);
++        if ((conn->flags & CONN_FLAG_DTOE)) {
++            if (kbdtoe_is_conn_offload_success(conn->fd)) {
++                kbdtoe_close(conn->fd);
++                kbdtoe_conn_status_for_close(conn->fd);
++            }
 +        } else {
 +            close(conn->fd);
 +            conn->fd = -1;
@@ -848,7 +869,21 @@ index f61ed2404..383091e98 100644
      }
  
      /* If called from within a handler, schedule the close but
-@@ -164,7 +170,12 @@ static void connSocketClose(connection *conn) {
+      * keep the connection until the handler returns.
+      */
+-    if (connHasRefs(conn)) {
+-        conn->flags |= CONN_FLAG_CLOSE_SCHEDULED;
+-        return;
+-    }
++    if (!(conn->flags & CONN_FLAG_DTOE)) {
++        if (connHasRefs(conn)) {
++            conn->flags |= CONN_FLAG_CLOSE_SCHEDULED;
++            return;
++        }
+ 
+-    zfree(conn);
++        zfree(conn);
++    }
  }
  
  static int connSocketWrite(connection *conn, const void *data, size_t data_len) {
@@ -862,7 +897,7 @@ index f61ed2404..383091e98 100644
      if (ret < 0 && errno != EAGAIN) {
          conn->last_errno = errno;
  
-@@ -179,7 +190,12 @@ static int connSocketWrite(connection *conn, const void *data, size_t data_len)
+@@ -179,7 +207,12 @@ static int connSocketWrite(connection *conn, const void *data, size_t data_len)
  }
  
  static int connSocketWritev(connection *conn, const struct iovec *iov, int iovcnt) {
@@ -876,7 +911,7 @@ index f61ed2404..383091e98 100644
      if (ret < 0 && errno != EAGAIN) {
          conn->last_errno = errno;
  
-@@ -194,7 +210,12 @@ static int connSocketWritev(connection *conn, const struct iovec *iov, int iovcn
+@@ -194,7 +227,12 @@ static int connSocketWritev(connection *conn, const struct iovec *iov, int iovcn
  }
  
  static int connSocketRead(connection *conn, void *buf, size_t buf_len) {
@@ -903,17 +938,16 @@ index dad2e2fd6..fc8e7a6ab 100644
  #define CONN_TYPE_SOCKET            1
  #define CONN_TYPE_TLS               2
 diff --git a/src/networking.c b/src/networking.c
-index 90cc64d70..ad85643c9 100644
+index 90cc64d70..e7e63d7bb 100644
 --- a/src/networking.c
 +++ b/src/networking.c
-@@ -1281,6 +1281,12 @@ void clientAcceptHandler(connection *conn) {
+@@ -1281,6 +1281,11 @@ void clientAcceptHandler(connection *conn) {
      moduleFireServerEvent(REDISMODULE_EVENT_CLIENT_CHANGE,
                            REDISMODULE_SUBEVENT_CLIENT_CHANGE_CONNECTED,
                            c);
 +    if (!islocalClient(c) && server.dtoe_ip[0] != '\0') {
-+        aeDeleteFileEvent(server.el, conn->fd, AE_READABLE|AE_WRITABLE|AE_DTOE_DEL);
-+        kbdtoe_conn_start_offload(conn->fd);
 +        conn->flags |= CONN_FLAG_DTOE;
++        kbdtoe_conn_start_offload(conn->fd);
 +        serverLog(LL_VERBOSE, "socket fd :%d start tcp offload", conn->fd);
 +    }
  }
