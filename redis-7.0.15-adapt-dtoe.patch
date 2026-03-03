@@ -1,6 +1,6 @@
-From 674d12d9704cccdf0ba0a6c82fa34b39ed1f3737 Mon Sep 17 00:00:00 2001
-From: tingwang1 <920347125@qq.com>
-Date: Sat, 14 Feb 2026 11:41:39 +0800
+From 8101e4f99e3c46fa9c824ece6fcc76271319b587 Mon Sep 17 00:00:00 2001
+From: twwang1 <920347125@qq.com>
+Date: Fri, 27 Feb 2026 16:06:29 +0800
 Subject: [PATCH] =?UTF-8?q?=E9=80=82=E9=85=8Ddtoe?=
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
@@ -584,7 +584,7 @@ index 000000000..1daea7e43
 +}
 diff --git a/src/ae_epoll_dtoe.c b/src/ae_epoll_dtoe.c
 new file mode 100644
-index 000000000..6f5d7dea0
+index 000000000..9564421a0
 --- /dev/null
 +++ b/src/ae_epoll_dtoe.c
 @@ -0,0 +1,161 @@
@@ -704,7 +704,7 @@ index 000000000..6f5d7dea0
 +    int retval = 0, numevents = 0;
 +    int nr_event = 0;
 +    if (eventLoop->flags & AE_USED_DTOE_FEATURE) {
-+        struct knet_recv_events recv_events[DTOE_RECV_POLL_CNT]; // DTOE_RECV_POLL_CNT必须和knet_poll_recv_channel的值保持一致
++        struct knet_recv_events recv_events[eventLoop->maxfd];
 +        kbdtoe_thread_poll(0, recv_events, &nr_event);
 +        for (int i = 0; i < nr_event; ++i) {
 +            eventLoop->fired[numevents].fd = recv_events[i].sockfd;
@@ -728,7 +728,7 @@ index 000000000..6f5d7dea0
 +            if (e->events & EPOLLOUT) mask |= AE_WRITABLE;
 +            if (e->events & EPOLLERR) mask |= AE_WRITABLE|AE_READABLE;
 +            if (e->events & EPOLLHUP) mask |= AE_WRITABLE|AE_READABLE;
-+            if (!knet_fd_is_offloaded(e->data.fd)) {
++            if (!(eventLoop->flags & AE_USED_DTOE_FEATURE) || !knet_fd_is_offloaded(e->data.fd)) {
 +                eventLoop->fired[numevents].fd = e->data.fd;
 +                eventLoop->fired[numevents].mask = mask;
 +                numevents++;
@@ -1012,5 +1012,5 @@ index 82e4db938..d150e5667 100644
      char *syslog_ident;             /* Syslog ident */
      int syslog_facility;            /* Syslog facility */
 -- 
-2.28.0.windows.1
+2.53.0.windows.1
 
