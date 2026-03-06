@@ -25,7 +25,7 @@ Redis sockmap优化特性通过将参与通信的socket对象存入BPF map（soc
 具体实现原理如[**图 1** sockmap原理图](#sockmap原理图)所示。
 
 **图 1** sockmap原理图<a name="fig19692067534"></a><a id="sockmap原理图"></a>
-![](figures/sockmap原理图.png "sockmap原理图")
+![](figures/sockmap原理图.svg "sockmap原理图")
 
 ### 约束与限制<a name="ZH-CN_TOPIC_0000002543634373"></a>
 
@@ -51,7 +51,7 @@ Redis sockmap优化特性通过将参与通信的socket对象存入BPF map（soc
 
 |项目|版本|版本|
 |--|--|--|
-|OS|openEuler 22.03 LTS SP4：[获取链接](https://repo.huaweicloud.com/openeuler/openEuler-22.03-LTS-SP4/ISO/aarch64/openEuler-22.03-LTS-SP4-everything-aarch64-dvd.iso)|openEuler 24.03 LTS SP3：[获取链接](https://repo.huaweicloud.com/openeuler/openEuler-22.03-LTS-SP4/ISO/aarch64/openEuler-22.03-LTS-SP4-everything-aarch64-dvd.iso)|
+|OS|openEuler 22.03 LTS SP4：[获取链接](https://repo.huaweicloud.com/openeuler/openEuler-22.03-LTS-SP4/ISO/aarch64/openEuler-22.03-LTS-SP4-everything-aarch64-dvd.iso)|openEuler 24.03 LTS SP3：[获取链接](https://repo.huaweicloud.com/openeuler/openEuler-24.03-LTS-SP3/ISO/aarch64/openEuler-24.03-LTS-SP3-everything-aarch64-dvd.iso)|
 |对应内核|kernel-5.10.0-216.0.0.115.oe2203sp4：[获取链接](https://repo.openeuler.org/openEuler-22.03-LTS-SP4/source/Packages/kernel-5.10.0-216.0.0.115.oe2203sp4.src.rpm)|kernel-6.6.0-132.0.0.111.oe2403sp3：[获取链接](https://dl-cdn.openeuler.openatom.cn/openEuler-24.03-LTS-SP3/source/Packages/kernel-6.6.0-132.0.0.111.oe2403sp3.src.rpm)|
 
 
@@ -175,5 +175,4 @@ echo 2 >/proc/sys/kernel/randomize_va_space
 |发布日期|修订记录|
 |--|--|
 |2026-03-30|第一次正式发布。|
-
 

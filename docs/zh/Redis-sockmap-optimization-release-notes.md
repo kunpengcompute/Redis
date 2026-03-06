@@ -71,14 +71,13 @@
 
 |文档名称|内容简介|交付形式|
 |--|--|--|
-|《Kunpeng BoostKit 26.0.RC1 Redis sockmap优化 版本说明书》|本文档提供Redis sockmap优化特性的版本发布及其配套信息。|鲲鹏社区|
-|《Kunpeng BoostKit 26.0.RC1 Redis sockmap优化 特性指南》|本文档提供Redis sockmap优化特性的环境要求、特性使能指导。|鲲鹏社区|
+|《Kunpeng BoostKit 26.0.RC1 Redis sockmap优化 版本说明书》|本文档提供Redis sockmap优化特性的版本发布及其配套信息。|开源仓|
+|《Kunpeng BoostKit 26.0.RC1 Redis sockmap优化 特性指南》|本文档提供Redis sockmap优化特性的环境要求、特性使能指导。|开源仓|
 
 
 
 ### 获取文档的方法<a name="ZH-CN_TOPIC_0000002544372643"></a>
 
-您可以通过访问[鲲鹏社区](https://www.hikunpeng.com/document/detail/zh/kunpengdbs/overview/kunpengdbs.html)浏览和获取相关文档。
-
+您可以通过访问[开源仓](https://gitcode.com/boostkit/Redis/tree/master/docs/zh)浏览和获取相关文档。
 
 
