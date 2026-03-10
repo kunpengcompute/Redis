@@ -25,7 +25,7 @@ Redis sockmap优化特性通过将参与通信的socket对象存入BPF map（soc
 具体实现原理如[**图 1** sockmap原理图](#sockmap原理图)所示。
 
 **图 1** sockmap原理图<a name="fig19692067534"></a><a id="sockmap原理图"></a>
-![](figures/sockmap原理图.svg "sockmap原理图")
+![](figures/sockmap原理图.png "sockmap原理图")
 
 ### 约束与限制<a name="ZH-CN_TOPIC_0000002543634373"></a>
 
@@ -175,4 +175,3 @@ echo 2 >/proc/sys/kernel/randomize_va_space
 |发布日期|修订记录|
 |--|--|
 |2026-03-30|第一次正式发布。|
-
