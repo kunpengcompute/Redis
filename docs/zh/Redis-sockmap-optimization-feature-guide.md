@@ -24,7 +24,7 @@ Redis sockmap优化特性通过将参与通信的socket对象存入BPF map（soc
 
 具体实现原理如[**图 1** sockmap原理图](#sockmap原理图)所示。
 
-**图 1** sockmap原理图<a name="fig19692067534"></a><a id="sockmap原理图"></a>
+**图 1** sockmap原理图<a name="fig19692067534"></a><a id="sockmap原理图"></a><br>
 ![](figures/sockmap原理图.png "sockmap原理图")
 
 ### 约束与限制<a name="ZH-CN_TOPIC_0000002543634373"></a>
@@ -79,7 +79,15 @@ Redis sockmap优化特性通过将参与通信的socket对象存入BPF map（soc
     rpm -ivh /home/kernel-5.10.0-216.0.0.115.oe2203sp4.src.rpm
     ```
 
-4. 进入SPEC文件目录并解压内核源码。
+4. 安装构建所需依赖。
+
+    ```
+    dnf install -y OpenCSD audit-libs-devel binutils-devel gtk2-devel java-1.8.0-openjdk java-1.8.0-openjdk-devel\
+        java-devel libbabeltrace-devel libcap-devel libcap-ng-devel libpfm-devel libtraceevent-devel libunwind-devel\
+        newt-devel numactl-devel pciutils-devel
+    ```
+
+5. 进入SPEC文件目录并解压内核源码。
 
     ```
     cd /root/rpmbuild/SPECS
@@ -89,7 +97,7 @@ Redis sockmap优化特性通过将参与通信的socket对象存入BPF map（soc
     >![](public_sys-resources/icon-note.gif) **说明：** 
     >rpmbuild是Linux下用于构建RPM包的工具，-bp参数表示仅执行准备（Prepare）阶段，即解压源码。
 
-5. 编译安装libbpf和bpftool。
+6. 编译安装libbpf和bpftool。
 
     ```
     cd /root/rpmbuild/BUILD/kernel-5.10.0/linux-5.10.0-216.0.0.115.aarch64-source/tools/lib/bpf
@@ -98,7 +106,7 @@ Redis sockmap优化特性通过将参与通信的socket对象存入BPF map（soc
     make install
     ```
 
-6. 进入netacc源码目录。
+7. 进入netacc源码目录。
 
     ```
     cd /root/rpmbuild/BUILD/kernel-5.10.0/linux-5.10.0-216.0.0.115.aarch64-source/tools/netacc
@@ -117,7 +125,7 @@ Redis sockmap优化特性通过将参与通信的socket对象存入BPF map（soc
     >    -   默认只加速redis-server进程，可在update\_netacc\_info\(\)函数中扩展支持的进程列表。
     >    -   当前仅支持IPv4，未包含IPv6处理逻辑，可添加IPv6处理函数、扩展socket键值结构并更新映射查找逻辑，以支持IPv6协议。
 
-7. 编译netacc。
+8. 编译netacc。
 
     ```
     make
@@ -125,21 +133,21 @@ Redis sockmap优化特性通过将参与通信的socket对象存入BPF map（soc
 
     ![](figures/zh-cn_image_0000002511150006.png)
 
-8. 挂载cgroup2，用于sockmap的资源管理。
+9. 挂载cgroup2，用于sockmap的资源管理。
 
     ```
     mkdir -p /mnt/cgroup2/
     mount -t cgroup2 none /mnt/cgroup2/
     ```
 
-9. 启用netacc，使能sockmap优化特性。
+10. 启用netacc，使能sockmap优化特性。
 
     ```
     cd /root/rpmbuild/BUILD/kernel-5.10.0/linux-5.10.0-216.0.0.115.aarch64-source/tools/netacc
     ./netacc enable /mnt/cgroup2/
     ```
 
-10. 使用bpftool确认sockmap特性是否使能成功，回显信息中包含名为netaccsock\_map的相关内容表示启用成功。
+11. 使用bpftool确认sockmap特性是否使能成功，回显信息中包含名为netaccsock\_map的相关内容表示启用成功。
 
     ```
     bpftool map show
@@ -147,12 +155,12 @@ Redis sockmap优化特性通过将参与通信的socket对象存入BPF map（soc
 
     ![](figures/zh-cn_image_0000002542631005.png)
 
-11. （可选）通过redis-benchmark测试可以得到使能本特性前后的性能提升效果，详细测试步骤请参见《[redis-benchmark测试指导](https://www.hikunpeng.com/document/detail/zh/kunpengdbs/testguide/tstg/kunpengredis-benchmark_02_0001.html)》。sockmap优化特性可以使redis-benchmark 2U8G规格下非pipeline场景综合性能（SET、GET）提升5%以上，优化前后对比效果如[**图 2** sockmap优化特性优化前后性能对比](#sockmap优化特性优化前后性能对比)所示。
+12. （可选）通过redis-benchmark测试可以得到使能本特性前后的性能提升效果，详细测试步骤请参见《[redis-benchmark测试指导](https://www.hikunpeng.com/document/detail/zh/kunpengdbs/testguide/tstg/kunpengredis-benchmark_02_0001.html)》。sockmap优化特性可以使redis-benchmark 2U8G规格下非pipeline场景综合性能（SET、GET）提升5%以上，优化前后对比效果如[**图 2** sockmap优化特性优化前后性能对比](#sockmap优化特性优化前后性能对比)所示。
 
     **图 2** sockmap优化特性优化前后性能对比<a name="fig1425555114118"></a><a id="sockmap优化特性优化前后性能对比"></a><br>
     ![](figures/sockmap优化特性优化前后性能对比.png "sockmap优化特性优化前后性能对比")
 
-12. （可选）可执行以下命令禁用sockmap优化特性。
+13. （可选）可执行以下命令禁用sockmap优化特性。
 
     ```
     cd /root/rpmbuild/BUILD/kernel-5.10.0/linux-5.10.0-216.0.0.115.aarch64-source/tools/netacc
