@@ -1,24 +1,25 @@
-From 8101e4f99e3c46fa9c824ece6fcc76271319b587 Mon Sep 17 00:00:00 2001
+From deed3bde21389114d133f0b661ed89a29836613b Mon Sep 17 00:00:00 2001
 From: twwang1 <920347125@qq.com>
-Date: Fri, 27 Feb 2026 16:06:29 +0800
-Subject: [PATCH] =?UTF-8?q?=E9=80=82=E9=85=8Ddtoe?=
+Date: Mon, 16 Mar 2026 11:48:50 +0800
+Subject: [PATCH] =?UTF-8?q?dtoe=5F=E9=80=82=E9=85=8D?=
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
 ---
- redis.conf          |   6 +-
- src/Makefile        |   4 +-
- src/ae.h            |   1 +
- src/ae_dtoe.c       | 499 ++++++++++++++++++++++++++++++++++++++++++++
- src/ae_epoll_dtoe.c | 161 ++++++++++++++
- src/config.c        |  48 +++++
- src/connection.c    |  60 +++++-
- src/connection.h    |   1 +
- src/networking.c    |   5 +
- src/server.c        |  13 ++
- src/server.h        |   2 +
- 11 files changed, 785 insertions(+), 15 deletions(-)
+ redis.conf                   |   6 +-
+ src/Makefile                 |   4 +-
+ src/ae.h                     |   1 +
+ src/ae_dtoe.c                | 499 +++++++++++++++++++++++++++++++++++
+ src/ae_epoll_dtoe.c          | 161 +++++++++++
+ src/config.c                 |  48 ++++
+ src/connection.c             |  60 ++++-
+ src/connection.h             |   1 +
+ src/networking.c             |  17 ++
+ src/server.c                 |  16 ++
+ src/server.h                 |   2 +
+ tests/unit/introspection.tcl |   1 +
+ 12 files changed, 801 insertions(+), 15 deletions(-)
  create mode 100644 src/ae_dtoe.c
  create mode 100644 src/ae_epoll_dtoe.c
 
@@ -938,23 +939,42 @@ index dad2e2fd6..fc8e7a6ab 100644
  #define CONN_TYPE_SOCKET            1
  #define CONN_TYPE_TLS               2
 diff --git a/src/networking.c b/src/networking.c
-index 90cc64d70..e7e63d7bb 100644
+index 90cc64d70..ba7f4be06 100644
 --- a/src/networking.c
 +++ b/src/networking.c
-@@ -1281,6 +1281,11 @@ void clientAcceptHandler(connection *conn) {
+@@ -1229,6 +1229,18 @@ int islocalClient(client *c) {
+     return !strcmp(cip,"127.0.0.1") || !strcmp(cip,"::1");
+ }
+ 
++/* Return true if client connected can dtoe offload */
++int isDtoeClient(client *c, char *dtoe_ip) {
++    /* tcp */
++    char cip[NET_IP_STR_LEN+1] = { 0 };
++    connSockName(c->conn, cip, sizeof(cip)-1, NULL);
++    char peer_ip[NET_IP_STR_LEN+1] = { 0 };
++    connPeerToString(c->conn, peer_ip, sizeof(peer_ip)-1, NULL);
++
++    serverLog(LL_DEBUG, "isDtoeClient, cip:%s, peer_ip:%s\n", cip, peer_ip);
++    return strcmp(cip, peer_ip) && !strcmp(cip, dtoe_ip);
++}
++
+ void clientAcceptHandler(connection *conn) {
+     client *c = connGetPrivateData(conn);
+ 
+@@ -1281,6 +1293,11 @@ void clientAcceptHandler(connection *conn) {
      moduleFireServerEvent(REDISMODULE_EVENT_CLIENT_CHANGE,
                            REDISMODULE_SUBEVENT_CLIENT_CHANGE_CONNECTED,
                            c);
-+    if (!islocalClient(c) && server.dtoe_ip[0] != '\0') {
-+        conn->flags |= CONN_FLAG_DTOE;
-+        kbdtoe_conn_start_offload(conn->fd);
-+        serverLog(LL_VERBOSE, "socket fd :%d start tcp offload", conn->fd);
++    if (server.dtoe_ip[0] != '\0' && !islocalClient(c) && isDtoeClient(c, server.dtoe_ip)) {
++        int ret = kbdtoe_conn_start_offload(conn->fd);
++        if (ret == 0 /* DTOE_SUCCESS */) conn->flags |= CONN_FLAG_DTOE;
++        serverLog(LL_VERBOSE, "socket fd :%d start tcp offload, ret:%d", conn->fd, ret);
 +    }
  }
  
  #define MAX_ACCEPTS_PER_CALL 1000
 diff --git a/src/server.c b/src/server.c
-index 9ca360ed4..52675e7df 100644
+index 9ca360ed4..8b4912bb6 100644
 --- a/src/server.c
 +++ b/src/server.c
 @@ -62,6 +62,7 @@
@@ -965,12 +985,22 @@ index 9ca360ed4..52675e7df 100644
  #ifdef __linux__
  #include <sys/mman.h>
  #endif
-@@ -7126,6 +7127,17 @@ int main(int argc, char **argv) {
+@@ -2509,6 +2510,9 @@ void initServer(void) {
+     adjustOpenFilesLimit();
+     const char *clk_msg = monotonicInit();
+     serverLog(LL_NOTICE, "monotonic clock: %s", clk_msg);
++    if (server.dtoe_ip[0] != '\0') {
++        server.maxclients += server.maxclients;
++    }
+     server.el = aeCreateEventLoop(server.maxclients+CONFIG_FDSET_INCR);
+     if (server.el == NULL) {
+         serverLog(LL_WARNING,
+@@ -7126,6 +7130,17 @@ int main(int argc, char **argv) {
          moduleLoadFromQueue();
          ACLLoadUsersAtStartup();
          InitServerLast();
 +        if (server.dtoe_ip[0] != '\0') {
-+            int res = kbdtoe_init(server.dtoe_ip);
++            int res = kbdtoe_init(server.dtoe_ip, server.maxclients);
 +            if (res != 0) {
 +                serverLog(LL_NOTICE, "kbdtoe init failed.");
 +                exit(0);
@@ -983,7 +1013,7 @@ index 9ca360ed4..52675e7df 100644
          aofLoadManifestFromDisk();
          loadDataFromDisk();
          aofOpenIfNeededOnServerStart();
-@@ -7170,6 +7182,7 @@ int main(int argc, char **argv) {
+@@ -7170,6 +7185,7 @@ int main(int argc, char **argv) {
  
      aeMain(server.el);
      aeDeleteEventLoop(server.el);
@@ -1011,6 +1041,18 @@ index 82e4db938..d150e5667 100644
      int syslog_enabled;             /* Is syslog enabled? */
      char *syslog_ident;             /* Syslog ident */
      int syslog_facility;            /* Syslog facility */
+diff --git a/tests/unit/introspection.tcl b/tests/unit/introspection.tcl
+index 460e7e280..18a458a5e 100644
+--- a/tests/unit/introspection.tcl
++++ b/tests/unit/introspection.tcl
+@@ -286,6 +286,7 @@ start_server {tags {"introspection"}} {
+             logfile
+             dir
+             socket-mark-id
++            dtoe-ip
+         }
+ 
+         if {!$::tls} {
 -- 
 2.53.0.windows.1
 
