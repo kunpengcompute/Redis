@@ -1,4 +1,4 @@
-# Redis sockmap优化 特性指南<a name="ZH-CN_TOPIC_0000002553653071"></a>
+# Redis sockmap优化 特性指南
 
 ## 特性描述<a name="ZH-CN_TOPIC_0000002542599151"></a>
 
