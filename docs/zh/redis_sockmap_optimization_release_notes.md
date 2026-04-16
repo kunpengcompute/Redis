@@ -1,4 +1,4 @@
-# Redis sockmap优化 版本说明书<a name="ZH-CN_TOPIC_0000002553533033"></a>
+# Redis sockmap优化 版本说明书
 
 ## 版本配套说明<a name="ZH-CN_TOPIC_0000002512812726"></a>
 
