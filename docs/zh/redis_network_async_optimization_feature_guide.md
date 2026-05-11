@@ -47,7 +47,7 @@ Redis网络异步优化特性以Patch文件和kraio库的形式，将KRAIO算法
 
 **使用命令行方式替换<a name="section9307191317373"></a>**
 
-1. 请参见\*\*[表 2](#操作系统和软件要求)\*\* [操作系统和软件要求](#操作系统和软件要求)下载KRAIO亲和内核rpm包放到环境上，在亲和内核所在目录下执行以下命令进行安装。
+1. 请参见 **[表 2](#操作系统和软件要求)** [操作系统和软件要求](#操作系统和软件要求)下载KRAIO亲和内核rpm包放到环境上，在亲和内核所在目录下执行以下命令进行安装。
    ```
    rpm -ivh kernel-5.10.0-275.0.0.178.oe2203sp4.aarch64.rpm --force
    ```
@@ -262,7 +262,7 @@ IPVLAN是一种Linux网络设备驱动，它提供了一种轻量级的方式来
    ```
    sudo systemctl restart docker
    ```
-3. 创建Docker IPVLAN网络，配置命令参考如下，请按实际情况修改对应参数，详见\*\*[表 1](#参数说明)\*\* [参数说明](#参数说明)。
+3. 创建Docker IPVLAN网络，配置命令参考如下，请按实际情况修改对应参数，详见 **[表 1](#参数说明)** [参数说明](#参数说明)。
    ```
    docker network create -d ipvlan \
     --subnet=192.168.***.0/24 \
@@ -352,7 +352,7 @@ IPVLAN是一种Linux网络设备驱动，它提供了一种轻量级的方式来
    make install
    cp /usr/local/lib/libconfig.so.15 /usr/lib64
    ```
-4. 请参见\*\*[表 2](#操作系统和软件要求)\*\* [操作系统和软件要求](#操作系统和软件要求)下载Redis 7.0.15配套网络异步优化特性patch包。
+4. 请参见 **[表 2](#操作系统和软件要求)** [操作系统和软件要求](#操作系统和软件要求)下载Redis 7.0.15配套网络异步优化特性patch包。
 5. 下载[kraio库](https://gitcode.com/boostkit/Redis/releases/download/BoostDB_Redis_1130/kraio.zip)并解压。
 6. 新建“/etc/kraio”文件夹，将kraio中的kraio.conf文件复制到“/etc/kraio”中。
    ```
