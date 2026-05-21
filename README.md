@@ -1,12 +1,12 @@
-﻿# Redis 网络特性优化
+﻿# Redis 网络优化特性
 
 ## 项目品牌名称
 Kunpeng BoostKit Redis
 
 ## 变更通知
-- [2026.03.05]：重构仓根 README，统一为总体介绍模板结构，补齐中英文文档入口。
-- [2025.03.31]：支持 Redis 网络异步优化版本发布说明（v25.3.0）。
-- [2025.02.28]：支持 Redis 7.0.15 网络异步优化能力。
+- [2026.03.05]：重构README。
+- [2025.03.30]：新增Redis网络异步优化特性使用指南和版本说明书。
+
 
 ## 项目介绍
 本仓库提供 Redis 网络异步优化相关内容，核心能力是 KRAIO（Kunpeng Redis Asynchronous I/O）方案及其配套补丁。
@@ -50,7 +50,7 @@ Kunpeng BoostKit Redis
 - 中文：`docs/zh/redis_network_async_optimization_release_notes.md`
 
 ## 快速入门
-以下为 Redis 7.0.15 的最小接入流程示例：
+以下为 Redis 7.0.15 的示例：
 
 ```bash
 # 1) 准备 kraio 并安装库文件
