@@ -34,8 +34,6 @@ Redis sockmap优化特性通过将参与通信的socket对象存入BPF map（soc
 - 访问控制失效：若原本依赖iptables实现访问控制（例如仅允许特定容器访问Redis），使用sockmap可能会绕过这些规则，从而使安全策略失效。此时，需要在eBPF程序中自行实现访问控制逻辑，以替代传统的iptables策略。
 - 网络监控受限：由于sockmap将流量绕过了传统网络栈，使用基于Netfilter的网络监控工具（如tcpdump工具和iptables日志工具）将无法完整捕获和记录相关流量信息，影响流量审计和故障排查的效率。
 
-
-
 ## 环境要求<a name="ZH-CN_TOPIC_0000002511138754"></a>
 
 本文基于特定环境提供指导，在正式操作前请确保软硬件均满足要求。
@@ -46,15 +44,12 @@ Redis sockmap优化特性通过将参与通信的socket对象存入BPF map（soc
 |--|--|
 |CPU|鲲鹏920新型号处理器、鲲鹏950处理器|
 
-
 **表 2** 操作系统和软件要求<a id="操作系统和软件要求"></a>
 
 |项目|版本|版本|
 |--|--|--|
 |OS|openEuler 22.03 LTS SP4：[获取链接](https://repo.huaweicloud.com/openeuler/openEuler-22.03-LTS-SP4/ISO/aarch64/openEuler-22.03-LTS-SP4-everything-aarch64-dvd.iso)|openEuler 24.03 LTS SP3：[获取链接](https://repo.huaweicloud.com/openeuler/openEuler-24.03-LTS-SP3/ISO/aarch64/openEuler-24.03-LTS-SP3-everything-aarch64-dvd.iso)|
 |对应内核|kernel-5.10.0-216.0.0.115.oe2203sp4：[获取链接](https://repo.openeuler.org/openEuler-22.03-LTS-SP4/source/Packages/kernel-5.10.0-216.0.0.115.oe2203sp4.src.rpm)|kernel-6.6.0-132.0.0.111.oe2403sp3：[获取链接](https://dl-cdn.openeuler.openatom.cn/openEuler-24.03-LTS-SP3/source/Packages/kernel-6.6.0-132.0.0.111.oe2403sp3.src.rpm)|
-
-
 
 ## 安装和使能特性<a name="ZH-CN_TOPIC_0000002542739059"></a>
 
@@ -119,11 +114,11 @@ Redis sockmap优化特性通过将参与通信的socket对象存入BPF map（soc
     - 自动加载eBPF程序并attach到指定cgroup。
 
     >![](public_sys-resources/icon-notice.gif) **须知：** 
-    >-   Linux内核禁止用户态直接操作sockmap，需编写eBPF程序并attach到sockops、sk\_msg等内核钩子。eBPF运行于内核态，拥有特权访问能力，同时通过BPF verifier机制确保执行安全。
-    >-   当前示例包含以下预设规则，生产部署前请根据实际应用场景进行评估和调整。
-    >    -   默认排除SSH端口（22），可在bpf\_sockmap\_ipv4\_insert\(\)函数中调整端口过滤逻辑。
-    >    -   默认只加速redis-server进程，可在update\_netacc\_info\(\)函数中扩展支持的进程列表。
-    >    -   当前仅支持IPv4，未包含IPv6处理逻辑，可添加IPv6处理函数、扩展socket键值结构并更新映射查找逻辑，以支持IPv6协议。
+    >- Linux内核禁止用户态直接操作sockmap，需编写eBPF程序并attach到sockops、sk\_msg等内核钩子。eBPF运行于内核态，拥有特权访问能力，同时通过BPF verifier机制确保执行安全。
+    >- 当前示例包含以下预设规则，生产部署前请根据实际应用场景进行评估和调整。
+    > - 默认排除SSH端口（22），可在bpf\_sockmap\_ipv4\_insert\(\)函数中调整端口过滤逻辑。
+    > - 默认只加速redis-server进程，可在update\_netacc\_info\(\)函数中扩展支持的进程列表。
+    > - 当前仅支持IPv4，未包含IPv6处理逻辑，可添加IPv6处理函数、扩展socket键值结构并更新映射查找逻辑，以支持IPv6协议。
 
 8. 编译netacc。
 
@@ -176,7 +171,6 @@ echo 2 >/proc/sys/kernel/randomize_va_space
 ```
 
 ![](figures/zh-cn_image_0000002504021297.png)
-
 
 ## 修订记录<a name="ZH-CN_TOPIC_0000002511328140"></a>
 
