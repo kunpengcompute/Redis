@@ -30,7 +30,7 @@ This document provides guidance based on the Kunpeng server and openEuler OS. Be
 | Redis       | 6.0.20                                               | [Link](https://download.redis.io/releases/redis-6.0.20.tar.gz)                                                                                                                                          |
 | Redis       | 7.0.15                                               | [Link](https://download.redis.io/releases/redis-7.0.15.tar.gz)                                                                                                                                          |
 | KRAIO affinity kernel  | kernel-5.10.0-275.0.0.178.oe2203sp4.aarch64.rpm or later| Click the [link](https://repo.openeuler.org/openEuler-22.03-LTS-SP4/update/aarch64/Packages/), search for <code>kernel-5.10.0</code> on the page, and download the latest kernel version. The kernel file name is in the format of <code>kernel-5.10.0-xxx.0.0.xxx.oe2203sp4.aarch64.rpm</code>, where <code>xxx</code> indicates the version. A larger value of <code>xxx</code> indicates a later version.|
-| KRAIO patch | redis-6.0.20-adapt-iouring.patch                     | Only Redis 6.0.20 is supported.<br>[Link](https://gitcode.com/boostkit/Redis/blob/master/redis-6.0.20-adapt-iouring.patch)                                                                                                 |
+| KRAIO patch | redis-6.0.15-6.0.20-adapt-iouring.patch                     | Only Redis 6.0.20 is supported.<br>[Link](https://gitcode.com/boostkit/Redis/blob/master/redis-6.0.15-6.0.20-adapt-iouring.patch)                                                                                                 |
 | KRAIO patch | redis-7.0.15-adapt-iouring.patch                     | Only Redis 7.0.15 is supported.<br>[Link](https://gitcode.com/boostkit/Redis/blob/master/redis-7.0.15-adapt-iouring.patch)                                                                                                 |
 | KRAIO library     | libkraio.so and kraio.h                                 | Redis 7.0.15 and Redis 6.0.20 are supported.<br>[Link](https://gitcode.com/boostkit/Redis/releases/download/BoostDB_Redis_1130/kraio.zip)                                                                                   |
 
@@ -48,33 +48,44 @@ The network asynchronization feature requires a specific kernel version. Therefo
 **Using the CLI<a name="section9307191317373"></a>**
 
 1. Refer to [**Table 2**](#os-and-software-requirements) to download the KRAIO affinity kernel RPM package to the target environment and run the following command in the affinity kernel directory:
-   ```
+
+   ```shell
    rpm -ivh kernel-5.10.0-275.0.0.178.oe2203sp4.aarch64.rpm --force
    ```
+
 2. Check the installed kernel and find the index of the KRAIO affinity kernel. Assume that the index is 0.
-   ```
+
+   ```shell
    grubby --info=ALL | egrep -i 'index|title'
    ```
+
 3. Replace the default kernel boot entry with the index number 0 of the KRAIO affinity kernel.
-   ```
+
+   ```shell
    grubby --set-default-index=0
    ```
+
 4. Check and confirm that the default kernel has been replaced with the KRAIO affinity kernel.
-   ```
+
+   ```shell
    grubby --default-kernel 
    ```
+
    ![](figures/en-us_image_0000002518399390.png)
 5. Reboot the server.
-   ```
+
+   ```shell
    reboot
    ```
 
 **Using the iBMC<a name="section1987503243710"></a>**
 
 1. Download the KRAIO affinity kernel RPM package to the target environment and run the following command in the affinity kernel directory:
-   ```
+
+   ```shell
    rpm -ivh kernel-5.10.0-275.0.0.178.oe2203sp4.aarch64.rpm --force
    ```
+
 2. Log in to the iBMC.
 
    ![](figures/en-us_image_0000002549879237.png)
@@ -100,14 +111,17 @@ Implementing bond4 requires coordinated configuration on both the server and net
 
 1. Log in to the switch.
 2. Check all available physical ports on the switch.
-   ```
+
+   ```shell
    display interface brief
    ```
+
    ![](figures/en-us_image_0000002518399386.png)
    > ![](public_sys-resources/icon-note.gif) **NOTE:**
    > As shown in the preceding figure, the ports on the switch corresponding to the two NICs (`eth1` and `eth2`) to form a bond4 group on the server are in the `up` state and not part of any Eth-Trunk group. This example demonstrates bond4 configuration using ports `25GE 1/0/33` and `25GE 1/0/34`.
 3. Create an Eth-Trunk 12 group and add `25GE 1/0/33` and `25GE 1/0/34` to the group.
-   ```
+
+   ```txt
    system-view 
    interface Eth-Trunk 12 
    mode lacp-dynamic 
@@ -126,6 +140,7 @@ Implementing bond4 requires coordinated configuration on both the server and net
    commit 
    quit
    ```
+
    ![](figures/en-us_image_0000002518239464.png)
 
 **Configuring the Server<a name="section10576182552614"></a>**
@@ -134,20 +149,25 @@ To configure NICs `eth1` and `eth2` as a bond4 interface, log in to the server a
 
 1. Log in to the server.
 2. Disable network connectivity for `eth1` and `eth2`.
-   ```
+
+   ```shell
    nmcli con down eth1 
    nmcli con down eth2
    ```
+
 3. Back up the `/etc/sysconfig/network-scripts/ifcfg-eth1` and `/etc/sysconfig/network-scripts/ifcfg-eth2` configuration files for `eth1` and `eth2`, and delete the original files.
-   ```
+
+   ```shell
    cd /etc/sysconfig/network-scripts 
    cp ifcfg-eth1 ifcfg-eth1.bak 
    cp ifcfg-eth2 ifcfg-eth2.bak
    rm -rf ifcfg-eth1
    rm -rf ifcfg-eth2
    ```
+
 4. Create an 802.3ad-compliant bond4 interface using `eth1` and `eth2`.
-   ```
+
+   ```shell
    nmcli con add type bond con-name bond4 ifname bond4 mode 802.3ad 
    nmcli con add type bond-slave ifname eth1 master bond4 
    nmcli con add type bond-slave ifname eth2 master bond4 
@@ -155,33 +175,44 @@ To configure NICs `eth1` and `eth2` as a bond4 interface, log in to the server a
    nmcli con up bond-slave-eth2 
    nmcli con up bond4
    ```
+
 5. Modify the bond4 interface configuration file.
-   ```
+
+   ```shell
    vi /etc/sysconfig/network-scripts/ifcfg-bond4
    ```
+
    Add an IP address and change `BOOTPROTO=dhcp` to `BOOTPROTO=none`.
-   ```
+
+   ```txt
    IPADDR=192.168.xx.xx 
    NETMASK=255.255.255.0 
    BOOTPROTO=none
    ```
+
    ![](figures/en-us_image_0000002518239460.png)
 6. Restart the network service and bond4 interface.
-   ```
+
+   ```shell
    service NetworkManager restart 
    nmcli con down bond4 
    nmcli con up bond4
    ```
+
 7. Check network information about the bond4 interface.
-   ```
+
+   ```shell
    ip a | grep -C 5 bond4  
    ip a
    ```
+
    ![](figures/en-us_image_0000002518399384.png)
 8. Check the bond4 interface status.
-   ```
+
+   ```shell
    cat /proc/net/bonding/bond4
    ```
+
    ![](figures/en-us_image_0000002549879231.png)
 
    The bond4 configuration is correct if the following conditions are met:
@@ -193,7 +224,7 @@ To configure NICs `eth1` and `eth2` as a bond4 interface, log in to the server a
 
 Following successful server-side bond4 setup, verify the `Eth-Trunk 12` configuration on the switch.
 
-```
+```shell
 display eth-trunk 12
 ```
 
@@ -214,56 +245,79 @@ IPVLAN is a Linux networking driver that enables multiple logical interfaces to 
 **Common Commands<a name="title343mcpsimp"></a>**
 
 - Check the Docker version.
-  ```
+
+  ```shell
   docker --version
   ```
+
 - Load an image.
-  ```
+
+  ```shell
   docker load -i openEuler-docker.aarch64.tar.xz
   ```
+
 - View loaded images.
-  ```
+
+  ```shell
   docker images
   ```
+
   ![](figures/en-us_image_0000002549759233.png)
 - View running Docker containers.
-  ```
+
+  ```shell
   docker ps
   ```
+
 - View all containers, including stopped ones.
-  ```
+
+  ```shell
   docker ps -a
   ```
+
 - Stop a container.
-  ```
+
+  ```shell
   docker stop <Container_ID>
   ```
+
 - Remove a container.
-  ```
+
+  ```shell
   docker rm (-f) <Container_ID>
   ```
+
 - View container networks.
-  ```
+
+  ```shell
   docker network ls
   ```
+
   ![](figures/en-us_image_0000002549879233.png)
 
 **Creating a Docker IPVLAN<a name="title363mcpsimp"></a>**
 
 1. Check whether the loaded kernel modules contain the IPVLAN module.
-   ```
+
+   ```shell
    lsmod | grep ipvlan
    ```
+
    If no command output is displayed, load the IPVLAN kernel module.
-   ```
+
+   ```shell
    sudo modprobe ipvlan
    ```
+
 2. If the Docker service is not started after the environment is restarted, restart the Docker service. Otherwise, skip this step.
-   ```
+
+   ```shell
    sudo systemctl restart docker
    ```
+
 3. Create a Docker IPVLAN network. The following are examples of the configuration commands. Change the parameters based on the site requirements. For details, see [**Table 1**](#parameter-description).
-   ```
+
+   ```shell
    docker network create -d ipvlan \
     --subnet=192.168.***.0/24 \
     --ip-range=192.168.***.128/25 \
@@ -271,10 +325,12 @@ IPVLAN is a Linux networking driver that enables multiple logical interfaces to 
     -o ipvlan_mode=l2 \
     -o parent=bond4 ipvlan_network
    ```
+
    > ![](public_sys-resources/icon-note.gif) **NOTE:**
    > This operation needs to be performed each time the environment is restarted.
 
 **Table 1** Parameter description<a id="parameter-description"></a>
+
 | Parameter          | Description                                 | Value                                                                                            |
 | ------------ | ----------------------------------- | ---------------------------------------------------------------------------------------------- |
 | subnet       | Indicates the subnet.                                 | Change the value of this parameter to the network segment of the environment. The network segment must be the same as that of the NIC IP address.                                                             |
@@ -293,7 +349,8 @@ This document uses four instances in a Docker-based environment with bond4 and I
 
 1. Install Docker as instructed in [Docker Installation Guide](https://www.hikunpeng.com/document/detail/en/kunpengcpfs/ecosystemEnable/Docker/kunpengdocker_03_0001.html).
 2. Create Docker containers.
-   ```
+
+   ```shell
    docker run --cpus=2 --cpuset-cpus=0-79 --cpuset-mems=0 -m 10g --net=ipvlan_network --cap-add CAP_SYS_ADMIN \ 
    --privileged=true -itd --name redis-docker-ipvlan-numa0-1 \ 
    -v /home:/home -v /usr:/usr -v /mnt:/mnt -v /lib/modules:/lib/modules -v /data:/data -v /etc:/etc \ 
@@ -314,6 +371,7 @@ This document uses four instances in a Docker-based environment with bond4 and I
    -v /home:/home -v /usr:/usr -v /mnt:/mnt -v /lib/modules:/lib/modules -v /data:/data -v /etc:/etc \ 
    openeuler-22.03-lts-sp4 /bin/bash
    ```
+
    > ![](public_sys-resources/icon-note.gif) **NOTE:**
    >
    > Container creation parameters:
@@ -329,11 +387,14 @@ This document uses four instances in a Docker-based environment with bond4 and I
 To enable the network asynchronization feature on Redis, install the related dependency libraries, compile the SO file, and apply the patch. This section uses Redis 7.0.15 as an example.
 
 1. Download the required dependencies.
-   ```
+
+   ```shell
    yum -y install wget git vim tar make gcc gcc-c++ libatomic texinfo libtool
    ```
+
 2. Install the liburing.a library.
-   ```
+
+   ```shell
    git clone https://gitee.com/src-openeuler/liburing.git
    cd liburing
    tar -zxvf liburing-2.4.tar.gz
@@ -341,8 +402,10 @@ To enable the network asynchronization feature on Redis, install the related dep
    make -j
    make install
    ```
+
 3. Install the libconfig library.
-   ```
+
+   ```shell
    git clone https://gitee.com/src-openeuler/libconfig.git
    cd libconfig
    tar -zxvf v1.8.1.tar.gz
@@ -353,52 +416,67 @@ To enable the network asynchronization feature on Redis, install the related dep
    make install
    cp /usr/local/lib/libconfig.so.15 /usr/lib64
    ```
+
 4. Download the patch package of the network asynchronization feature for Redis 7.0.15 as instructed in [**Table 2**](#os-and-software-requirements).
 5. Download the [KRAIO library](https://gitcode.com/boostkit/Redis/releases/download/BoostDB_Redis_1130/kraio.zip) and decompress the package.
 6. Create a `/etc/kraio` folder and copy the `kraio.conf` file in `kraio` to `/etc/kraio`.
-   ```
+
+   ```shell
    cd kraio
    mkdir /etc/kraio 
    cp conf/kraio.conf /etc/kraio
    ```
+
 7. Place the downloaded SO file and `kraio.h` file in the corresponding paths and configure environment variables.
-   ```
+
+   ```shell
    cp ./libkraio/libkraio.so /usr/lib64 
    cp ./include/kraio.h /usr/include
    export PATH=/usr/local/include:$PATH 
    export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/lib64:/usr/lib
    ```
+
 8. Move the `redis-7.0.15-adapt-iouring.patch` file in `Redis` to the Redis source code directory and apply the patch.
    > ![](public_sys-resources/icon-note.gif) **NOTE:**
    > Redis 7.0.15 is used as an example. For Redis 6.0.20, move the `redis-6.0.20-adapt-iouring.patch` file to the Redis source code directory and apply the patch. In the subsequent operations, replace the version number in commands.
-   ```
+
+   ```shell
    git clone https://gitcode.com/BoostKit/Redis.git
    cd Redis
    cp redis-7.0.15-adapt-iouring.patch path/redis-7.0.15/
    cd path/redis-7.0.15
    patch -p1 < redis-7.0.15-adapt-iouring.patch
    ```
+
 9. Recompile Redis.
-   ```
+
+   ```shell
    cd path/redis-7.0.15
    make distclean
    make -j
    ```
+
 10. To enable the poll function, modify the `/etc/kraio/kraio.conf` file.
     1. Go to `/etc/kraio`.
-       ```
+
+       ```shell
        cd /etc/kraio
        ```
+
     2. Open the `kraio.conf` file.
-       ```
+
+       ```shell
        vim kraio.conf
        ```
+
     3. Press `i` to enter the insert mode and set `epoll=true`.
     4. Press `Esc`, type `:wq!`, and press `Enter` to save the file and exit.
 11. During the testing, run the following command on the server. If any `iou-sqp-*` thread is displayed, the feature is successfully enabled.
-    ```
+
+    ```shell
     top -Hp <redis-server_instance_pid>
     ```
+
     ![](figures/en-us_image_0000002518239470.png)
 
 ## Verifying the Feature<a name="EN-US_TOPIC_0000002549759225"></a>
@@ -406,19 +484,25 @@ To enable the network asynchronization feature on Redis, install the related dep
 ### Testing Functions (Single-Node System)<a name="EN-US_TOPIC_0000002549879225"></a>
 
 1. On the server, access the four Docker containers, and start a redis-server instance with network asynchronization enabled in each Docker container.
-   ```
+
+   ```shell
    docker exec -it {Container_name} bash
    ```
+
    - For Redis 6.0.20:
-     ```
+
+     ```shell
      cd path/redis-6.0.20
      ./src/redis-server ./redis.conf --bind 0.0.0.0 --port 6379
      ```
+
    - For Redis 7.0.15:
-     ```
+
+     ```shell
      cd path/redis-7.0.15
      ./src/redis-server ./redis.conf --bind 0.0.0.0 --port 6379
      ```
+
 2. Go to the Redis directory on the client and prepare the stress test script. You can use the following script and modify parameters as needed.
    > ![](public_sys-resources/icon-note.gif) **NOTE:**
    > The client and server can be deployed on the same machine, but the performance will be affected. You are advised to remotely perform the stress test. That is, install Redis 6.0.20 of the standard edition on a remote machine for the test. For details about the installation, see [Redis Porting Guide](https://www.hikunpeng.com/document/detail/en/kunpengdbs/ecosystemEnable/Redis/kunpengredis_02_0001.html).
@@ -429,7 +513,8 @@ To enable the network asynchronization feature on Redis, install the related dep
    > - `instances` is the number of instances. The value `4` is used in this section.
    > - `client` is a parameter of `-c`, indicating the optimal number of concurrent connections. The default value is `200`, which can be changed as required.
    > - `size` is a parameter of `-d`, which is `3` (bytes) by default and can be changed to `256` or other values.
-   ```
+
+   ```txt
    #!/bin/bash 
     
    REDIS_PATH="xxx1" # Redis directory
@@ -461,6 +546,7 @@ To enable the network asynchronization feature on Redis, install the related dep
    echo "Waiting for the $instances jobs: SET, GET" 
    wait $job_ids
    ```
+
 3. Run the stress test script to perform the redis-benchmark test on the four instances simultaneously.
 
    The performance test results are recorded in the `DATA_LOG` directory. Run the `cat ./*` command to view the results. The average performance of the four instances is the four-instance performance.
@@ -471,9 +557,11 @@ To enable the network asynchronization feature on Redis, install the related dep
 
 1. Start a Docker container in the server environment and deploy the container in primary/secondary replication mode as instructed in [Redis Deployment Guide](https://www.hikunpeng.com/document/detail/en/kunpengdbs/ecosystemEnable/Redis/kunpengredis_04_0001.html).
 2. Start redis_benchmark on the client to perform the test. Replace `$HOST` in the command with the IP address of the server, `$PORT` with the port number of the primary Redis, and `redis-benchmark` with the actual path.
-   ```
+
+   ```txt
    redis-path/src/redis-benchmark -h $HOST -p $PORT -c 200 -n 10000000 -r 10000000 -t set,get --threads 20
    ```
+
    If no error is reported and the primary Redis does not exit abnormally, the function verification is successful.
 
 ### Testing Performance<a name="EN-US_TOPIC_0000002549879221"></a>
@@ -483,7 +571,8 @@ To enable the network asynchronization feature on Redis, install the related dep
 This section describes how to prepare for and perform a performance stress test in the existing environment, including basic environment configuration, service instance startup, stress test script preparation and execution, and optional cleanup operations after the test is complete.
 
 1. Run the following commands on the server to configure the basic environment.
-   ```
+
+   ```shell
    systemctl stop firewalld.service
    systemctl disable firewalld.service
    sed -i 's/SELINUX=enforcing/SELINUX=disabled/g' /etc/sysconfig/selinux
@@ -493,26 +582,35 @@ This section describes how to prepare for and perform a performance stress test 
    swapoff -a
    systemctl start irqbalance
    ```
+
 2. Set firewalld to clear kernel modules when it exits.
-   ```
+
+   ```shell
    sed -i "s/CleanupModulesOnExit=no/CleanupModulesOnExit=yes/g" /etc/firewalld/*.conf
    ```
+
 3. Restart the firewalld service.
-   ```
+
+   ```shell
    systemctl restart firewalld
    ```
+
 4. Stop the firewalld service.
-   ```
+
+   ```shell
    systemctl stop firewalld
    ```
+
 5. <a id="li324mcpsimp"></a>On the server, access the four Docker containers, and start a redis-server instance with network asynchronization enabled in each Docker container.
    > ![](public_sys-resources/icon-note.gif) **NOTE:**
    > For Redis 6.0.20, replace the directory in the command in [step 5](#li324mcpsimp) with the directory of Redis 6.0.20. Other operations are the same as those of Redis 7.0.15.
-   ```
+
+   ```shell
    docker exec -it {Container_name} bash
    cd path/redis-7.0.15 
    ./src/redis-server ./redis.conf --bind 0.0.0.0 --port 6379
    ```
+
 6. Go to the Redis directory on the client and prepare the stress test script. You can use the following script and modify parameters as needed.
    > ![](public_sys-resources/icon-note.gif) **NOTE:**
    > The client and server can be deployed on the same machine, but the performance will be affected. You are advised to remotely perform the stress test. That is, install Redis 7.0.15 of the standard edition on a remote machine for the test. For details about the installation, see [Redis Porting Guide](https://www.hikunpeng.com/document/detail/en/kunpengdbs/ecosystemEnable/Redis/kunpengredis_02_0001.html).
@@ -523,7 +621,8 @@ This section describes how to prepare for and perform a performance stress test 
    > - `instances` is the number of instances.
    > - `client` is a parameter of `-c`, indicating the optimal number of concurrent connections.
    > - `size` is a parameter of `-d`, which is `3` (bytes) by default and can be changed to `256` or other values.
-   ```
+
+   ```shell
    #!/bin/bash 
     
    REDIS_PATH="xxx1" # Redis directory
@@ -555,6 +654,7 @@ This section describes how to prepare for and perform a performance stress test 
    echo "Waiting for the $instances jobs: SET, GET" 
    wait $job_ids
    ```
+
 7. Run the stress test script to perform the redis-benchmark test on the four instances simultaneously.
 
    The performance test results are recorded in the `DATA_LOG` directory. Run the `cat ./*` command to view the results. The average performance of the four instances is the four-instance performance.
@@ -572,13 +672,13 @@ Test the performance of a single Redis instance in the local loopback cross-NUMA
 
 Command for starting the server:
 
-```
+```shell
 numactl --cpunodebind=$numa_code redis-server --maxmemory 8G --maxmemory-policy allkeys-lru --port $port --protected-mode no --appendonly no --save ""
 ```
 
 Command for performing a stress test on the client:
 
-```
+```shell
 numactl --cpunodebind=$numa_code redis-benchmark -h 127.0.0.1 -p $port -P 1 -c $client -d 3 -n 10000000 -r 10000000 -t set,get --threads 20 -q
 ```
 
@@ -592,7 +692,8 @@ After all tests are complete, cancel bond4 configuration and restore the environ
 
 1. Log in to the switch.
 2. Delete the `eth-trunk 12` interface.
-   ```
+
+   ```shell
    system-view 
    interface eth-trunk 12 
    undo trunkport 25GE 1/0/33 
@@ -609,22 +710,29 @@ After all tests are complete, cancel bond4 configuration and restore the environ
 
 1. Log in to the server.
 2. Disable the bound connections.
-   ```
+
+   ```shell
    nmcli con down bond-slave-eth1 
    nmcli con down bond-slave-eth2 
    nmcli con down bond4
    ```
+
 3. Remove physical interfaces from the bond.
-   ```
+
+   ```shell
    nmcli con delete bond-slave-eth1 
    nmcli con delete bond-slave-eth2
    ```
+
 4. Delete the bond4 connection.
-   ```
+
+   ```shell
    nmcli con delete bond4
    ```
+
 5. Restore the backup configuration files of the `eth1` and `eth2` NICs.
-   ```
+
+   ```shell
    cd /etc/sysconfig/network-scripts 
    mv ifcfg-eth1.bak ifcfg-eth1 
    mv ifcfg-eth2.bak ifcfg-eth2 
@@ -647,18 +755,23 @@ IPVLAN is still marked as an experimental function in Docker.
 **Conclusion and Solution<a name="section142121051103112"></a>**
 
 1. Open the `daemon.json` file.
-   ```
+
+   ```shell
    vi /etc/docker/daemon.json
    ```
+
 2. Press `i` to enter the insert mode and modify the field (if the file already contains content, add the following content to the top).
-   ```
+
+   ```txt
    { 
       "experimental": true 
    }
    ```
+
 3. Press `Esc`, type `:wq!`, and press `Enter` to save the file and exit.
 4. Restart the Docker service.
-   ```
+
+   ```shell
    sudo systemctl restart docker
    ```
 
@@ -675,7 +788,7 @@ IPVLAN is still marked as an experimental function in Docker.
 
 Address space layout randomization (ASLR) is a security technology against buffer overflow. It randomizes the layout of linear areas such as heap, stack, and shared library mapping to make it difficult for attackers to predict target addresses and directly locate code, thereby preventing overflow attacks.
 
-```
+```shell
 echo 2 >/proc/sys/kernel/randomize_va_space
 ```
 

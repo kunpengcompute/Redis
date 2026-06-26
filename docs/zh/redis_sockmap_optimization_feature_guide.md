@@ -57,26 +57,26 @@ Redis sockmap优化特性通过将参与通信的socket对象存入BPF map（soc
 
 1. 安装sockmap相关依赖。
 
-    ```
+    ```shell
     dnf install -y rpm-build gcc make flex bison openssl-devel elfutils-libelf-devel bc dwarves python3-docutils python3-devel xmlto kmod patch elfutils elfutils-devel elfutils-libelf-devel llvm llvm-devel clang clang-devel
     ```
 
 2. 进入工作目录例如“/home”，并下载内核源码rpm包。
 
-    ```
+    ```shell
     cd /home
     wget --no-check-certificate https://repo.openeuler.org/openEuler-22.03-LTS-SP4/source/Packages/kernel-5.10.0-216.0.0.115.oe2203sp4.src.rpm
     ```
 
 3. 执行如下命令安装rpm包。
 
-    ```
+    ```shell
     rpm -ivh /home/kernel-5.10.0-216.0.0.115.oe2203sp4.src.rpm
     ```
 
 4. 安装构建所需依赖。
 
-    ```
+    ```shell
     dnf install -y OpenCSD audit-libs-devel binutils-devel gtk2-devel java-1.8.0-openjdk java-1.8.0-openjdk-devel\
         java-devel libbabeltrace-devel libcap-devel libcap-ng-devel libpfm-devel libtraceevent-devel libunwind-devel\
         newt-devel numactl-devel pciutils-devel
@@ -84,7 +84,7 @@ Redis sockmap优化特性通过将参与通信的socket对象存入BPF map（soc
 
 5. 进入SPEC文件目录并解压内核源码。
 
-    ```
+    ```shell
     cd /root/rpmbuild/SPECS
     rpmbuild -bp --target=aarch64 kernel.spec
     ```
@@ -94,7 +94,7 @@ Redis sockmap优化特性通过将参与通信的socket对象存入BPF map（soc
 
 6. 编译安装libbpf和bpftool。
 
-    ```
+    ```shell
     cd /root/rpmbuild/BUILD/kernel-5.10.0/linux-5.10.0-216.0.0.115.aarch64-source/tools/lib/bpf
     make install 
     cd /root/rpmbuild/BUILD/kernel-5.10.0/linux-5.10.0-216.0.0.115.aarch64-source/tools/bpf/bpftool
@@ -103,7 +103,7 @@ Redis sockmap优化特性通过将参与通信的socket对象存入BPF map（soc
 
 7. 进入netacc源码目录。
 
-    ```
+    ```shell
     cd /root/rpmbuild/BUILD/kernel-5.10.0/linux-5.10.0-216.0.0.115.aarch64-source/tools/netacc
     ```
 
@@ -116,13 +116,13 @@ Redis sockmap优化特性通过将参与通信的socket对象存入BPF map（soc
     >![](public_sys-resources/icon-notice.gif) **须知：** 
     >- Linux内核禁止用户态直接操作sockmap，需编写eBPF程序并attach到sockops、sk\_msg等内核钩子。eBPF运行于内核态，拥有特权访问能力，同时通过BPF verifier机制确保执行安全。
     >- 当前示例包含以下预设规则，生产部署前请根据实际应用场景进行评估和调整。
-    > - 默认排除SSH端口（22），可在bpf\_sockmap\_ipv4\_insert\(\)函数中调整端口过滤逻辑。
-    > - 默认只加速redis-server进程，可在update\_netacc\_info\(\)函数中扩展支持的进程列表。
-    > - 当前仅支持IPv4，未包含IPv6处理逻辑，可添加IPv6处理函数、扩展socket键值结构并更新映射查找逻辑，以支持IPv6协议。
+    >- 默认排除SSH端口（22），可在bpf\_sockmap\_ipv4\_insert\(\)函数中调整端口过滤逻辑。
+    >- 默认只加速redis-server进程，可在update\_netacc\_info\(\)函数中扩展支持的进程列表。
+    >- 当前仅支持IPv4，未包含IPv6处理逻辑，可添加IPv6处理函数、扩展socket键值结构并更新映射查找逻辑，以支持IPv6协议。
 
 8. 编译netacc。
 
-    ```
+    ```shell
     make
     ```
 
@@ -130,21 +130,21 @@ Redis sockmap优化特性通过将参与通信的socket对象存入BPF map（soc
 
 9. 挂载cgroup2，用于sockmap的资源管理。
 
-    ```
+    ```shell
     mkdir -p /mnt/cgroup2/
     mount -t cgroup2 none /mnt/cgroup2/
     ```
 
 10. 启用netacc，使能sockmap优化特性。
 
-    ```
+    ```shell
     cd /root/rpmbuild/BUILD/kernel-5.10.0/linux-5.10.0-216.0.0.115.aarch64-source/tools/netacc
     ./netacc enable /mnt/cgroup2/
     ```
 
 11. 使用bpftool确认sockmap特性是否使能成功，回显信息中包含名为netaccsock\_map的相关内容表示启用成功。
 
-    ```
+    ```shell
     bpftool map show
     ```
 
@@ -157,7 +157,7 @@ Redis sockmap优化特性通过将参与通信的socket对象存入BPF map（soc
 
 13. （可选）可执行以下命令禁用sockmap优化特性。
 
-    ```
+    ```shell
     cd /root/rpmbuild/BUILD/kernel-5.10.0/linux-5.10.0-216.0.0.115.aarch64-source/tools/netacc
     ./netacc disable /mnt/cgroup2/
     ```
@@ -166,7 +166,7 @@ Redis sockmap优化特性通过将参与通信的socket对象存入BPF map（soc
 
 ASLR（Address Space Layout Randomization，地址空间布局随机化）是一种针对缓冲区溢出的安全保护技术，通过对堆、栈、共享库映射等线性区布局的随机化，增加攻击者预测目的地址的难度，防止攻击者直接定位攻击代码位置，达到阻止溢出攻击的目的。
 
-```
+```shell
 echo 2 >/proc/sys/kernel/randomize_va_space
 ```
 
