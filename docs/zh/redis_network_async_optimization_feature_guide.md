@@ -30,7 +30,7 @@ Redis网络异步优化特性以Patch文件和kraio库的形式，将KRAIO算法
 | Redis       | 6.0.20                                               | [获取链接](https://download.redis.io/releases/redis-6.0.20.tar.gz)                                                                                                                                           |
 | Redis       | 7.0.15                                               | [获取链接](https://download.redis.io/releases/redis-7.0.15.tar.gz)                                                                                                                                           |
 | KRAIO亲和内核   | kernel-5.10.0-275.0.0.178.oe2203sp4.aarch64.rpm及以上版本 | 单击[获取链接](https://repo.openeuler.org/openEuler-22.03-LTS-SP4/update/aarch64/Packages/)，在页面中搜索“kernel-5.10.0”，请在搜索结果中选择最新的内核版本进行下载。内核文件名如kernel-5.10.0-xxx.0.0.xxx.oe2203sp4.aarch64.rpm所示，其中xxx越大，代表版本越新。 |
-| KRAIO patch | redis-6.0.20-adapt-iouring.patch                     | 只适配Redis 6.0.20。<br>[获取链接](https://gitcode.com/boostkit/Redis/blob/master/redis-6.0.20-adapt-iouring.patch)                                                                                                  |
+| KRAIO patch | redis-6.0.15-6.0.20-adapt-iouring.patch                     | 只适配Redis 6.0.20。<br>[获取链接](https://gitcode.com/boostkit/Redis/blob/master/redis-6.0.15-6.0.20-adapt-iouring.patch)                                                                                                  |
 | KRAIO patch | redis-7.0.15-adapt-iouring.patch                     | 只适配Redis 7.0.15。<br>[获取链接](https://gitcode.com/boostkit/Redis/blob/master/redis-7.0.15-adapt-iouring.patch)                                                                                                  |
 | KRAIO库      | libkraio.so和kraio.h                                  | 适配Redis 7.0.15和Redis 6.0.20。[获取链接](https://gitcode.com/boostkit/Redis/releases/download/BoostDB_Redis_1130/kraio.zip)                                                                                    |
 
@@ -49,32 +49,32 @@ Redis网络异步优化特性以Patch文件和kraio库的形式，将KRAIO算法
 
 1. 请参见 **[表 2](#操作系统和软件要求)** [操作系统和软件要求](#操作系统和软件要求)下载KRAIO亲和内核rpm包放到环境上，在亲和内核所在目录下执行以下命令进行安装。
 
-   ```
+   ```shell
    rpm -ivh kernel-5.10.0-275.0.0.178.oe2203sp4.aarch64.rpm --force
    ```
 
 2. 检查已经安装的内核，找出KRAIO亲和内核的索引号，假设索引号为0。
 
-   ```
+   ```shell
    grubby --info=ALL | egrep -i 'index|title'
    ```
 
 3. 使用KRAIO亲和内核的索引号“0”替换默认内核引导条目。
 
-   ```
+   ```shell
    grubby --set-default-index=0
    ```
 
 4. 查看默认内核，确认已替换成KRAIO亲和内核。
 
-   ```
+   ```shell
    grubby --default-kernel 
    ```
 
    ![](figures/zh-cn\_image\_0000002518399390.png)
 5. 重启服务器。
 
-   ```
+   ```shell
    reboot
    ```
 
@@ -82,7 +82,7 @@ Redis网络异步优化特性以Patch文件和kraio库的形式，将KRAIO算法
 
 1. 将KRAIO亲和内核下载到环境上，在亲和内核所在目录下执行以下命令进行安装。
 
-   ```
+   ```shell
    rpm -ivh kernel-5.10.0-275.0.0.178.oe2203sp4.aarch64.rpm --force
    ```
 
@@ -112,7 +112,7 @@ Bond4是网络接口绑定（Network Interface Bonding）中的模式4，也称�
 1. 登录交换机。
 2. 查看交换机上所有可用的物理接口。
 
-   ```
+   ```shell
    display interface brief
    ```
 
@@ -121,7 +121,7 @@ Bond4是网络接口绑定（Network Interface Bonding）中的模式4，也称�
    > 如上图所示，检查Server端组Bond4的两张网卡eth1和eth2对应交换机上的端口状态为**up**且没有在Eth-Trunk组内。下文以25GE 1/0/33和25GE 1/0/34端口为例进行Bond4配置。
 3. 创建聚合组Eth-Trunk 12，并将物理接口25GE 1/0/33和25GE 1/0/34加入Eth-Trunk 12。
 
-   ```
+   ```txt
    system-view 
    interface Eth-Trunk 12 
    mode lacp-dynamic 
@@ -150,14 +150,14 @@ Bond4是网络接口绑定（Network Interface Bonding）中的模式4，也称�
 1. 登录Server端。
 2. 断开eth1和eth2网卡的网络连接。
 
-   ```
+   ```shell
    nmcli con down eth1 
    nmcli con down eth2
    ```
 
 3. 备份eth1网卡和eth2网卡配置文件“/etc/sysconfig/network-scripts/ifcfg-eth1”和“/etc/sysconfig/network-scripts/ifcfg-eth2”，并删除原文件。
 
-   ```
+   ```shell
    cd /etc/sysconfig/network-scripts 
    cp ifcfg-eth1 ifcfg-eth1.bak 
    cp ifcfg-eth2 ifcfg-eth2.bak
@@ -167,7 +167,7 @@ Bond4是网络接口绑定（Network Interface Bonding）中的模式4，也称�
 
 4. 将eth1和eth2网卡组成Bond4，且使其支持802.3ad协议。
 
-   ```
+   ```shell
    nmcli con add type bond con-name bond4 ifname bond4 mode 802.3ad 
    nmcli con add type bond-slave ifname eth1 master bond4 
    nmcli con add type bond-slave ifname eth2 master bond4 
@@ -178,13 +178,13 @@ Bond4是网络接口绑定（Network Interface Bonding）中的模式4，也称�
 
 5. 修改Bond4的配置文件。
 
-   ```
+   ```shell
    vi /etc/sysconfig/network-scripts/ifcfg-bond4
    ```
 
    添加IP地址，将“BOOTPROTO=dhcp”改成“BOOTPROTO=none”。
 
-   ```
+   ```txt
    IPADDR=192.168.xx.xx 
    NETMASK=255.255.255.0 
    BOOTPROTO=none
@@ -193,7 +193,7 @@ Bond4是网络接口绑定（Network Interface Bonding）中的模式4，也称�
    ![](figures/zh-cn\_image\_0000002518239460.png)
 6. 重启网络服务和Bond4 。
 
-   ```
+   ```shell
    service NetworkManager restart 
    nmcli con down bond4 
    nmcli con up bond4
@@ -201,7 +201,7 @@ Bond4是网络接口绑定（Network Interface Bonding）中的模式4，也称�
 
 7. 查看Bond4的网络信息。
 
-   ```
+   ```shell
    ip a | grep -C 5 bond4  
    ip a
    ```
@@ -209,7 +209,7 @@ Bond4是网络接口绑定（Network Interface Bonding）中的模式4，也称�
    ![](figures/zh-cn\_image\_0000002518399384.png)
 8. 查看Bond4状态。
 
-   ```
+   ```shell
    cat /proc/net/bonding/bond4
    ```
 
@@ -224,7 +224,7 @@ Bond4是网络接口绑定（Network Interface Bonding）中的模式4，也称�
 
 在Server端配置完成Bond4并检查配置正确后，在交换机侧查看Eth-Trunk 12。
 
-```
+```shell
 display eth-trunk 12
 ```
 
@@ -246,50 +246,50 @@ IPVLAN是一种Linux网络设备驱动，它提供了一种轻量级的方式来
 
 - 查看Docker版本。
 
-  ```
+  ```shell
   docker --version
   ```
 
 - 加载镜像。
 
-  ```
+  ```shell
   docker load -i openEuler-docker.aarch64.tar.xz
   ```
 
 - 查看加载的镜像。
 
-  ```
+  ```shell
   docker images
   ```
 
   ![](figures/zh-cn\_image\_0000002549759233.png)
 - 显示正在运行的Docker容器。
 
-  ```
+  ```shell
   docker ps
   ```
 
 - 显示所有Docker容器，包括已经停止的容器。
 
-  ```
+  ```shell
   docker ps -a
   ```
 
 - 停止容器。
 
-  ```
+  ```shell
   docker stop <容器id>
   ```
 
 - 删除容器。
 
-  ```
+  ```shell
   docker rm  (-f) <容器id>
   ```
 
 - 查看容器网络。
 
-  ```
+  ```shell
   docker network ls
   ```
 
@@ -299,25 +299,25 @@ IPVLAN是一种Linux网络设备驱动，它提供了一种轻量级的方式来
 
 1. 查看内核加载的模块中是否包含IPVLAN模块。
 
-   ```
+   ```shell
    lsmod | grep ipvlan
    ```
 
    若没有回显信息，加载IPVLAN内核模块。
 
-   ```
+   ```shell
    sudo modprobe ipvlan
    ```
 
 2. 环境重启后若Docker服务未启动，需重启Docker服务，否则跳过该步骤。
 
-   ```
+   ```shell
    sudo systemctl restart docker
    ```
 
 3. 创建Docker IPVLAN网络，配置命令参考如下，请按实际情况修改对应参数，详见 **[表 1](#参数说明)** [参数说明](#参数说明)。
 
-   ```
+   ```shell
    docker network create -d ipvlan \
     --subnet=192.168.***.0/24 \
     --ip-range=192.168.***.128/25 \
@@ -349,7 +349,7 @@ IPVLAN是一种Linux网络设备驱动，它提供了一种轻量级的方式来
 1. 安装Docker，请参见《[Docker安装指南](https://www.hikunpeng.com/document/detail/zh/kunpengcpfs/ecosystemEnable/Docker/kunpengdocker_03_0001.html)》。
 2. 创建Docker容器。
 
-   ```
+   ```shell
    docker run --cpus=2 --cpuset-cpus=0-79 --cpuset-mems=0 -m 10g --net=ipvlan_network --cap-add CAP_SYS_ADMIN \ 
    --privileged=true -itd --name redis-docker-ipvlan-numa0-1 \ 
    -v /home:/home -v /usr:/usr -v /mnt:/mnt -v /lib/modules:/lib/modules -v /data:/data -v /etc:/etc \ 
@@ -386,13 +386,13 @@ IPVLAN是一种Linux网络设备驱动，它提供了一种轻量级的方式来
 
 1. 下载所需依赖。
 
-   ```
+   ```shell
    yum -y install wget git vim tar make gcc gcc-c++ libatomic texinfo libtool
    ```
 
 2. 安装liburing.a依赖库。
 
-   ```
+   ```shell
    git clone https://gitee.com/src-openeuler/liburing.git
    cd liburing
    tar -zxvf liburing-2.4.tar.gz
@@ -403,7 +403,7 @@ IPVLAN是一种Linux网络设备驱动，它提供了一种轻量级的方式来
 
 3. 安装libconfig依赖库。
 
-   ```
+   ```shell
    git clone https://gitee.com/src-openeuler/libconfig.git
    cd libconfig
    tar -zxvf v1.8.1.tar.gz
@@ -419,7 +419,7 @@ IPVLAN是一种Linux网络设备驱动，它提供了一种轻量级的方式来
 5. 下载[kraio库](https://gitcode.com/boostkit/Redis/releases/download/BoostDB_Redis_1130/kraio.zip)并解压。
 6. 新建“/etc/kraio”文件夹，将kraio中的kraio.conf文件复制到“/etc/kraio”中。
 
-   ```
+   ```shell
    cd kraio
    mkdir /etc/kraio 
    cp conf/kraio.conf /etc/kraio
@@ -427,7 +427,7 @@ IPVLAN是一种Linux网络设备驱动，它提供了一种轻量级的方式来
 
 7. 将下载的so文件和kraio.h文件放到对应路径，并配置环境变量。
 
-   ```
+   ```shell
    cp ./libkraio/libkraio.so /usr/lib64 
    cp ./include/kraio.h /usr/include
    export PATH=/usr/local/include:$PATH 
@@ -438,7 +438,7 @@ IPVLAN是一种Linux网络设备驱动，它提供了一种轻量级的方式来
    > ![](public\_sys-resources/icon-note.gif) **说明：**
    > 此处以Redis 7.0.15为例。对于Redis 6.0.20，请将**redis-6.0.20-adapt-iouring.patch**移到Redis源码目录下，再执行合入patch的命令。后续操作中，请注意替换命令中的版本号。
 
-   ```
+   ```shell
    git clone https://gitcode.com/BoostKit/Redis.git
    cd Redis
    cp redis-7.0.15-adapt-iouring.patch path/redis-7.0.15/
@@ -448,7 +448,7 @@ IPVLAN是一种Linux网络设备驱动，它提供了一种轻量级的方式来
 
 9. 重新编译Redis。
 
-   ```
+   ```shell
    cd path/redis-7.0.15
    make distclean
    make -j
@@ -457,13 +457,13 @@ IPVLAN是一种Linux网络设备驱动，它提供了一种轻量级的方式来
 10. 若需要使能poll功能，修改“/etc/kraio/kraio.conf”文件。
     1. 进入/etc/kraio。
 
-       ```
+       ```shell
        cd /etc/kraio
        ```
 
     2. 打开kraio.conf。
 
-       ```
+       ```shell
        vim kraio.conf
        ```
 
@@ -471,7 +471,7 @@ IPVLAN是一种Linux网络设备驱动，它提供了一种轻量级的方式来
     4. 按“Esc”键，输入 **:wq!**，按“Enter”保存并退出编辑。
 11. 在测试过程中，在服务器端输入如下命令查看，如出现iou-sqp-\*相关线程说明特性使能成功。
 
-    ```
+    ```shell
     top -Hp <redis-server实例pid>
     ```
 
@@ -483,20 +483,20 @@ IPVLAN是一种Linux网络设备驱动，它提供了一种轻量级的方式来
 
 1. 在Server端环境分别进入4个Docker容器，每个Docker容器上启动一个网络异步优化后的redis-server实例，共启动4个网络异步优化后的redis-server实例。
 
-   ```
+   ```shell
    docker exec -it {容器名} bash 
    ```
 
    - 对于Redis 6.0.20版本：
 
-     ```
+     ```shell
      cd path/redis-6.0.20
      ./src/redis-server ./redis.conf --bind 0.0.0.0 --port 6379
      ```
 
    - 对于Redis 7.0.15版本：
 
-     ```
+     ```shell
      cd path/redis-7.0.15
      ./src/redis-server ./redis.conf --bind 0.0.0.0 --port 6379
      ```
@@ -512,7 +512,7 @@ IPVLAN是一种Linux网络设备驱动，它提供了一种轻量级的方式来
    > - client为-c参数，设为最优并发数，默认200，也可改成其他。
    > - size为-d参数，默认3字节，也可改为256字节或其他。
 
-   ```
+   ```txt
    #!/bin/bash 
     
    REDIS_PATH="xxx1" # Redis所在目录
@@ -556,7 +556,7 @@ IPVLAN是一种Linux网络设备驱动，它提供了一种轻量级的方式来
 1. 在Server端环境启动1个Docker容器，按照《[Redis部署指南](https://www.hikunpeng.com/document/detail/zh/kunpengdbs/ecosystemEnable/Redis/kunpengredis_04_0001.html)》中主从复制模式部署的方式部署。
 2. 客户端启动redis\_benchmark进行测试，命令中的`$HOST`需改为服务端的IP地址，`$PORT`改成主Redis的端口号，redis-benchmark替换为实际路径。
 
-   ```
+   ```txt
    redis-path/src/redis-benchmark -h $HOST -p $PORT -c 200 -n 10000000 -r 10000000 -t set,get --threads 20
    ```
 
@@ -570,7 +570,7 @@ IPVLAN是一种Linux网络设备驱动，它提供了一种轻量级的方式来
 
 1. 在Server端执行以下命令进行基础环境配置。
 
-   ```
+   ```shell
    systemctl stop firewalld.service
    systemctl disable firewalld.service
    sed -i 's/SELINUX=enforcing/SELINUX=disabled/g' /etc/sysconfig/selinux
@@ -583,19 +583,19 @@ IPVLAN是一种Linux网络设备驱动，它提供了一种轻量级的方式来
 
 2. 设置firewalld在退出时清理内核模块。
 
-   ```
+   ```shell
    sed -i "s/CleanupModulesOnExit=no/CleanupModulesOnExit=yes/g" /etc/firewalld/*.conf
    ```
 
 3. 重启firewalld服务。
 
-   ```
+   ```shell
    systemctl restart firewalld
    ```
 
 4. 停止firewalld服务。
 
-   ```
+   ```shell
    systemctl stop firewalld
    ```
 
@@ -603,7 +603,7 @@ IPVLAN是一种Linux网络设备驱动，它提供了一种轻量级的方式来
    > ![](public\_sys-resources/icon-note.gif) **说明：**
    > 对于Redis 6.0.20，请将步骤[5](#li324mcpsimp)命令中的目录替换成Redis 6.0.20的目录即可，其它操作步骤与Redis 7.0.15一致。
 
-   ```
+   ```shell
    docker exec -it {容器名} bash 
    cd path/redis-7.0.15 
    ./src/redis-server ./redis.conf --bind 0.0.0.0 --port 6379
@@ -620,7 +620,7 @@ IPVLAN是一种Linux网络设备驱动，它提供了一种轻量级的方式来
    > - client为-c参数，设为最优并发数。
    > - size为-d参数，默认3字节，也可改为256字节或其他。
 
-   ```
+   ```txt
    #!/bin/bash 
     
    REDIS_PATH="xxx1" # Redis所在目录
@@ -670,13 +670,13 @@ Redis单实例本地回环跨NUMA性能测试。例如指定服务端（redis-se
 
 服务端启动命令：
 
-```
+```shell
 numactl --cpunodebind=$numa_code redis-server --maxmemory 8G --maxmemory-policy allkeys-lru --port $port --protected-mode no --appendonly no --save ""
 ```
 
 客户端压测命令：
 
-```
+```shell
 numactl --cpunodebind=$numa_code redis-benchmark -h 127.0.0.1 -p $port -P 1 -c $client -d 3 -n 10000000 -r 10000000 -t set,get --threads 20 -q
 ```
 
@@ -691,7 +691,7 @@ numactl --cpunodebind=$numa_code redis-benchmark -h 127.0.0.1 -p $port -P 1 -c $
 1. 登录交换机。
 2. 删除interface eth-trunk 12。
 
-   ```
+   ```shell
    system-view 
    interface eth-trunk 12 
    undo trunkport 25GE 1/0/33 
@@ -709,7 +709,7 @@ numactl --cpunodebind=$numa_code redis-benchmark -h 127.0.0.1 -p $port -P 1 -c $
 1. 登录Server端。
 2. 停用绑定的连接。
 
-   ```
+   ```shell
    nmcli con down bond-slave-eth1 
    nmcli con down bond-slave-eth2 
    nmcli con down bond4
@@ -717,20 +717,20 @@ numactl --cpunodebind=$numa_code redis-benchmark -h 127.0.0.1 -p $port -P 1 -c $
 
 3. 从Bond中移除物理接口。
 
-   ```
+   ```shell
    nmcli con delete bond-slave-eth1 
    nmcli con delete bond-slave-eth2
    ```
 
 4. 删除Bond4连接。
 
-   ```
+   ```shell
    nmcli con delete bond4
    ```
 
 5. 恢复备份的eth1网卡和eth2网卡的配置文件。
 
-   ```
+   ```shell
    cd /etc/sysconfig/network-scripts 
    mv ifcfg-eth1.bak ifcfg-eth1 
    mv ifcfg-eth2.bak ifcfg-eth2 
@@ -754,13 +754,13 @@ IPVLAN在Docker中仍然被标记为实验性功能。
 
 1. 打开文件daemon.json。
 
-   ```
+   ```shell
    vi /etc/docker/daemon.json
    ```
 
 2. 按“i”进入编辑模式，修改字段（如果文件内已有内容，将以下字段添加至顶部）。
 
-   ```
+   ```txt
    { 
       "experimental": true 
    }
@@ -769,7 +769,7 @@ IPVLAN在Docker中仍然被标记为实验性功能。
 3. 按“Esc”键，输入 **:wq!**，按“Enter”保存并退出编辑。
 4. 重启Docker服务。
 
-   ```
+   ```shell
    sudo systemctl restart docker
    ```
 
@@ -786,7 +786,7 @@ IPVLAN在Docker中仍然被标记为实验性功能。
 
 ASLR（Address Space Layout Randomization，地址空间布局随机化）是一种针对缓冲区溢出的安全保护技术，通过对堆、栈、共享库映射等线性区布局的随机化，增加攻击者预测目的地址的难度，防止攻击者直接定位攻击代码位置，达到阻止溢出攻击的目的。
 
-```
+```shell
 echo 2 >/proc/sys/kernel/randomize_va_space
 ```
 
