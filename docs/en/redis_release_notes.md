@@ -60,7 +60,7 @@ None
 |--|--|--|
 |*Redis Network Asynchronization Feature Guide*|Describes the environment requirements and provides guidance on enabling the Redis network asynchronization feature.|Open-source repository|
 
-### Obtaining Documentation<a name="EN-US_TOPIC_0000002544372643"></a>
+### Obtaining Documentation
 
 Visit the [open-source repository](https://gitcode.com/boostkit/Redis/tree/master/docs) to view or download required documents.
 
@@ -123,7 +123,7 @@ None
 |--|--|--|
 |*Redis Sockmap Optimization Feature Guide*|Describes the environment requirements and provides guidance on enabling the Redis sockmap optimization feature.|Open-source repository|
 
-### Obtaining Documentation<a name="EN-US_TOPIC_0000002544372643"></a>
+### Obtaining Documentation
 
 Visit the [open-source repository](https://gitcode.com/boostkit/Redis/tree/master/docs) to view or download required documents.
 
@@ -187,6 +187,6 @@ None
 |--|--|--|
 |*Redis Network Asynchronization Feature Guide*|Describes the environment requirements and provides guidance on enabling the Redis network asynchronization feature.|Open-source repository|
 
-### Obtaining Documentation<a name="EN-US_TOPIC_0000002544372643"></a>
+### Obtaining Documentation
 
 Visit the [open-source repository](https://gitcode.com/boostkit/Redis/tree/master/docs) to view or download required documents.
