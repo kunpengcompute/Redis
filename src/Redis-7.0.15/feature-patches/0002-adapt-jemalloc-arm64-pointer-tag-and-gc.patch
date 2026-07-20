@@ -1,17 +1,15 @@
-From ee69bd6b12771bdac8e4a068cca80cccf2dd80bd Mon Sep 17 00:00:00 2001
-From: yinbin <yinbin8@h-partners.com>
-Date: Thu, 21 May 2026 09:15:06 +0800
-Subject: [PATCH] redis-7.0.15 adapt jemalloc-5.2.1 arm64 pointer-tag and gc
- strategy optimize
+From a9963a8470fd2744473c68ae82e13d54c350e197 Mon Sep 17 00:00:00 2001
+From: twwang1 <920347125@qq.com>
+Date: Mon, 20 Jul 2026 17:18:20 +0800
+Subject: [PATCH] jemalloc arm64-pointer-tag and gc
 
-Signed-off-by: yinbin <yinbin8@h-partners.com>
 ---
  deps/Makefile                                 | 11 ++++
- .../include/jemalloc/internal/ptr_tag.h       | 38 +++++++++++++
+ .../include/jemalloc/internal/ptr_tag.h       | 38 ++++++++++++
  .../include/jemalloc/internal/tcache_types.h  |  2 +-
- deps/jemalloc/src/jemalloc.c                  | 54 +++++++++++++++++++
- src/zmalloc.c                                 |  6 +++
- 5 files changed, 110 insertions(+), 1 deletion(-)
+ deps/jemalloc/src/jemalloc.c                  | 62 +++++++++++++++++++
+ src/zmalloc.c                                 |  6 ++
+ 5 files changed, 118 insertions(+), 1 deletion(-)
  create mode 100644 deps/jemalloc/include/jemalloc/internal/ptr_tag.h
 
 diff --git a/deps/Makefile b/deps/Makefile
@@ -94,7 +92,7 @@ index dce69382e..33f40cf1a 100644
  /* Number of tcache allocation/deallocation events between incremental GCs. */
  #define TCACHE_GC_INCR							\
 diff --git a/deps/jemalloc/src/jemalloc.c b/deps/jemalloc/src/jemalloc.c
-index 97da1ee72..d64a5e3d6 100644
+index 97da1ee72..6894770ad 100644
 --- a/deps/jemalloc/src/jemalloc.c
 +++ b/deps/jemalloc/src/jemalloc.c
 @@ -19,6 +19,10 @@
@@ -108,7 +106,7 @@ index 97da1ee72..d64a5e3d6 100644
  
  /******************************************************************************/
  /* Data. */
-@@ -200,6 +204,14 @@ static bool had_conf_error = false;
+@@ -200,6 +204,20 @@ static bool had_conf_error = false;
  static bool	malloc_init_hard_a0(void);
  static bool	malloc_init_hard(void);
  
@@ -116,14 +114,20 @@ index 97da1ee72..d64a5e3d6 100644
 +JEMALLOC_ATTR(constructor)
 +static void
 +jemalloc_enable_tagged_addr_abi(void) {
-+	prctl(PR_SET_TAGGED_ADDR_CTRL, PR_TAGGED_ADDR_ENABLE, 0, 0, 0);
++	int ret = prctl(PR_SET_TAGGED_ADDR_CTRL, PR_TAGGED_ADDR_ENABLE, 0, 0, 0);
++	if (ret != 0) {
++		malloc_write("<jemalloc>: Failed to enable tagged address"
++			" ABI via prctl(PR_SET_TAGGED_ADDR_CTRL), please check the current "
++			"system configuration.\n");
++		abort();
++	}
 +}
 +#endif
 +
  /******************************************************************************/
  /*
   * Begin miscellaneous support functions.
-@@ -2164,6 +2176,13 @@ imalloc_body(static_opts_t *sopts, dynamic_opts_t *dopts, tsd_t *tsd) {
+@@ -2164,6 +2182,13 @@ imalloc_body(static_opts_t *sopts, dynamic_opts_t *dopts, tsd_t *tsd) {
  		assert(usize == isalloc(tsd_tsdn(tsd), allocation));
  		*tsd_thread_allocatedp_get(tsd) += usize;
  	}
@@ -137,7 +141,7 @@ index 97da1ee72..d64a5e3d6 100644
  
  	if (sopts->slow) {
  		UTRACE(0, size, allocation);
-@@ -2379,6 +2398,9 @@ je_malloc(size_t size) {
+@@ -2379,6 +2404,9 @@ je_malloc(size_t size) {
  			tcache->prof_accumbytes += usize;
  		}
  
@@ -147,7 +151,7 @@ index 97da1ee72..d64a5e3d6 100644
  		LOG("core.malloc.exit", "result: %p", ret);
  
  		/* Fastpath success */
-@@ -2658,6 +2680,9 @@ je_realloc(void *ptr, size_t arg_size) {
+@@ -2658,6 +2686,9 @@ je_realloc(void *ptr, size_t arg_size) {
  	size_t size = arg_size;
  
  	LOG("core.realloc.entry", "ptr: %p, size: %zu\n", ptr, size);
@@ -157,7 +161,7 @@ index 97da1ee72..d64a5e3d6 100644
  
  	if (unlikely(size == 0)) {
  		if (ptr != NULL) {
-@@ -2709,9 +2734,13 @@ je_realloc(void *ptr, size_t arg_size) {
+@@ -2709,9 +2740,13 @@ je_realloc(void *ptr, size_t arg_size) {
  				    &alloc_ctx, &hook_args);
  			}
  		} else {
@@ -171,18 +175,20 @@ index 97da1ee72..d64a5e3d6 100644
  			ret = iralloc(tsd, ptr, old_usize, size, 0, false,
  			    &hook_args);
  		}
-@@ -2762,6 +2791,10 @@ je_realloc(void *ptr, size_t arg_size) {
+@@ -2762,6 +2797,12 @@ je_realloc(void *ptr, size_t arg_size) {
  	UTRACE(ptr, size, ret);
  	check_entry_exit_locking(tsdn);
  
 +#ifdef JEMALLOC_PTR_TAG
++    if (likely(ret != NULL)) {
 +		ret = ptr_tag_set(ret, sz_size2index(usize));
++	}
 +#endif
 +
  	LOG("core.realloc.exit", "result: %p", ret);
  	return ret;
  }
-@@ -2863,6 +2896,10 @@ JEMALLOC_EXPORT void JEMALLOC_NOTHROW
+@@ -2863,6 +2904,10 @@ JEMALLOC_EXPORT void JEMALLOC_NOTHROW
  je_free(void *ptr) {
  	LOG("core.free.entry", "ptr: %p", ptr);
  
@@ -193,7 +199,7 @@ index 97da1ee72..d64a5e3d6 100644
  	if (!free_fastpath(ptr, 0, false)) {
  		free_default(ptr);
  	}
-@@ -3490,6 +3527,10 @@ je_dallocx(void *ptr, int flags) {
+@@ -3490,6 +3535,10 @@ je_dallocx(void *ptr, int flags) {
  	assert(ptr != NULL);
  	assert(malloc_initialized() || IS_INITIALIZER);
  
@@ -204,7 +210,7 @@ index 97da1ee72..d64a5e3d6 100644
  	tsd_t *tsd = tsd_fetch();
  	bool fast = tsd_fast(tsd);
  	check_entry_exit_locking(tsd_tsdn(tsd));
-@@ -3727,6 +3768,16 @@ je_malloc_usable_size(JEMALLOC_USABLE_SIZE_CONST void *ptr) {
+@@ -3727,6 +3776,16 @@ je_malloc_usable_size(JEMALLOC_USABLE_SIZE_CONST void *ptr) {
  
  	assert(malloc_initialized() || IS_INITIALIZER);
  
@@ -221,7 +227,7 @@ index 97da1ee72..d64a5e3d6 100644
  	tsdn = tsdn_fetch();
  	check_entry_exit_locking(tsdn);
  
-@@ -3927,5 +3978,8 @@ jemalloc_postfork_child(void) {
+@@ -3927,5 +3986,8 @@ jemalloc_postfork_child(void) {
  JEMALLOC_EXPORT int JEMALLOC_NOTHROW
  get_defrag_hint(void* ptr) {
  	assert(ptr != NULL);
@@ -255,5 +261,5 @@ index 0ace61ffb..a18046327 100644
      size_t page_size_mask = page_size - 1;
  
 -- 
-2.33.0
+2.53.0.windows.1
 
