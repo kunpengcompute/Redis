@@ -1,11 +1,13 @@
 # 版本说明书
+
 ## 2026-9-30
+
 ### 修改记录
 
 | 文档版本 | 发布日期   | 修改说明                                                                                                                                 |
 | ---- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| 01   | 2026-09-30 |- Redis rpush场景内存管理优化提升性能。 |
-| 02   | 2026-09-30 |- Redis zrange场景浮点数打印性能性能提升。 |
+| 01   | 2026-09-30 |- Redis 浮点类型加速。 |
+| 02   | 2026-09-30 |- Redis jemalloc内存库加速。 |
 
 ### 版本配套说明
 
@@ -19,19 +21,19 @@
 
 |特性名称|软件类型|版本|
 |--|--|--|
-|Redis rpush场景内存管理优化提升性能|OS|openEuler 22.03 LTS SP4、openEuler 24.03 LTS SP3、Debian （velinux 5.15）|
-|Redis rpush场景内存管理优化提升性能|Redis|Redis 7.0.15|
-|Redis rpush场景内存管理优化提升性能|memtier-benchmark|memtier-benchmark 2.1.4|
-|Redis zrange场景浮点数打印性能性能提升|OS|openEuler 22.03 LTS SP4、openEuler 24.03 LTS SP3、Debian （velinux 5.15）|
-|Redis zrange场景浮点数打印性能性能提升|Redis|Redis 7.0.15|
-|Redis zrange场景浮点数打印性能性能提升|memtier-benchmark|memtier-benchmark 2.1.4|
+|Redis 浮点类型加速|OS|openEuler 22.03 LTS SP4、openEuler 24.03 LTS SP3|
+|Redis 浮点类型加速|Redis|Redis 7.0.15|
+|Redis 浮点类型加速|memtier-benchmark|memtier-benchmark 2.1.4|
+|Redis jemalloc内存库加速|OS|openEuler 22.03 LTS SP4、openEuler 24.03 LTS SP3|
+|Redis jemalloc内存库加速|Redis|Redis 7.0.15|
+|Redis jemalloc内存库加速|memtier-benchmark|memtier-benchmark 2.1.4|
 
 #### 硬件版本配套说明
 
 | 特性名称          | 硬件项目          | 要求说明                                      |
 | ------------- | ------------- | ----------------------------------------- |
-| Redis rpush场景内存管理优化提升性能     | 处理器           | 鲲鹏920新型号处理器、鲲鹏950处理器器                  |
-| Redis zrange场景浮点数打印性能性能提升| 处理器           | 鲲鹏920新型号处理器、鲲鹏950处理器器                    |
+| Redis rpush场景内存管理优化提升性能     | 处理器           | 鲲鹏920新型号处理器、鲲鹏950处理器                 |
+| Redis zrange场景浮点数打印性能提升| 处理器           | 鲲鹏920新型号处理器、鲲鹏950处理器                   |
 
 #### 病毒扫描结果
 
@@ -47,11 +49,11 @@
 
 ##### Redis rpush场景内存管理优化提升性能
 
-通过jemalloc pointger-tag、tcache等优化单实例 2C2T rpush场景下性能提升5%。
+通过jemalloc pointer-tag、tcache等优化单实例2C2T rpush场景下性能提升5%。
 
-##### Redis zrange场景浮点数打印性能性能提升
+##### Redis zrange场景浮点数打印性能提升
 
-通过fpconv热点等优化物理机单实例绑numa下zrange场景下浮点数打印性能性能提升。
+通过fpconv热点等优化物理机单实例绑numa下zrange场景下浮点数打印性能提升。
 
 #### 已解决的问题
 
@@ -152,7 +154,7 @@
 
 | 特性名称          | 硬件项目          | 要求说明                                      |
 | ------------- | ------------- | ----------------------------------------- |
-| Redis sockmap优化      | 处理器           | 鲲鹏920新型号处理器、鲲鹏950处理器器                  |
+| Redis sockmap优化      | 处理器           | 鲲鹏920新型号处理器、鲲鹏950处理器                 |
 
 #### 病毒扫描结果
 
@@ -182,7 +184,7 @@
 
 |文档名称|内容简介|交付形式|
 |--|--|--|
-|《Redis sockmap优化 特性指南》|本文档提供Redis网络异步优化特性的环境要求、特性使能指导。|开源仓|
+|《Redis sockmap优化 特性指南》|本文档提供Redis sockmap优化特性的环境要求、特性使能指导。|开源仓|
 
 ### 获取文档的方法<a name="ZH-CN_TOPIC_0000002544372643"></a>
 
