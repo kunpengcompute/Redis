@@ -1,6 +1,6 @@
-From a9963a8470fd2744473c68ae82e13d54c350e197 Mon Sep 17 00:00:00 2001
+From 725ed35db13e4f273eb3d7bf956f3e108b82ed9f Mon Sep 17 00:00:00 2001
 From: twwang1 <920347125@qq.com>
-Date: Mon, 20 Jul 2026 17:18:20 +0800
+Date: Sat, 25 Jul 2026 16:01:51 +0800
 Subject: [PATCH] jemalloc arm64-pointer-tag and gc
 
 ---
@@ -8,8 +8,7 @@ Subject: [PATCH] jemalloc arm64-pointer-tag and gc
  .../include/jemalloc/internal/ptr_tag.h       | 38 ++++++++++++
  .../include/jemalloc/internal/tcache_types.h  |  2 +-
  deps/jemalloc/src/jemalloc.c                  | 62 +++++++++++++++++++
- src/zmalloc.c                                 |  6 ++
- 5 files changed, 118 insertions(+), 1 deletion(-)
+ 4 files changed, 112 insertions(+), 1 deletion(-)
  create mode 100644 deps/jemalloc/include/jemalloc/internal/ptr_tag.h
 
 diff --git a/deps/Makefile b/deps/Makefile
@@ -92,7 +91,7 @@ index dce69382e..33f40cf1a 100644
  /* Number of tcache allocation/deallocation events between incremental GCs. */
  #define TCACHE_GC_INCR							\
 diff --git a/deps/jemalloc/src/jemalloc.c b/deps/jemalloc/src/jemalloc.c
-index 97da1ee72..6894770ad 100644
+index 97da1ee72..a6c8e772f 100644
 --- a/deps/jemalloc/src/jemalloc.c
 +++ b/deps/jemalloc/src/jemalloc.c
 @@ -19,6 +19,10 @@
@@ -236,30 +235,6 @@ index 97da1ee72..6894770ad 100644
 +#endif
  	return iget_defrag_hint(TSDN_NULL, ptr);
  }
-diff --git a/src/zmalloc.c b/src/zmalloc.c
-index 0ace61ffb..a18046327 100644
---- a/src/zmalloc.c
-+++ b/src/zmalloc.c
-@@ -31,6 +31,9 @@
- #include "fmacros.h"
- #include "config.h"
- #include "solarisfixes.h"
-+#ifdef JEMALLOC_PTR_TAG
-+#include "deps/jemalloc/include/jemalloc/internal/ptr_tag.h"
-+#endif
- 
- #include <stdio.h>
- #include <stdlib.h>
-@@ -422,6 +425,9 @@ void zmalloc_set_oom_handler(void (*oom_handler)(size_t)) {
- void zmadvise_dontneed(void *ptr) {
- #if defined(USE_JEMALLOC) && defined(__linux__)
-     static size_t page_size = 0;
-+#ifdef JEMALLOC_PTR_TAG
-+    ptr = ptr_tag_untag(ptr);
-+#endif
-     if (page_size == 0) page_size = sysconf(_SC_PAGESIZE);
-     size_t page_size_mask = page_size - 1;
- 
 -- 
-2.53.0.windows.1
+2.43.0
 
