@@ -1,25 +1,22 @@
-From deed3bde21389114d133f0b661ed89a29836613b Mon Sep 17 00:00:00 2001
+From 300af0587aa281e7aa2701680a6b2091154bc0ea Mon Sep 17 00:00:00 2001
 From: twwang1 <920347125@qq.com>
-Date: Mon, 16 Mar 2026 11:48:50 +0800
-Subject: [PATCH] =?UTF-8?q?dtoe=5F=E9=80=82=E9=85=8D?=
-MIME-Version: 1.0
-Content-Type: text/plain; charset=UTF-8
-Content-Transfer-Encoding: 8bit
+Date: Fri, 14 Aug 2026 12:01:30 +0800
+Subject: [PATCH] adapt dtoe for 630
 
 ---
  redis.conf                   |   6 +-
  src/Makefile                 |   4 +-
- src/ae.h                     |   1 +
- src/ae_dtoe.c                | 499 +++++++++++++++++++++++++++++++++++
- src/ae_epoll_dtoe.c          | 161 +++++++++++
+ src/ae.h                     |   2 +
+ src/ae_dtoe.c                | 504 +++++++++++++++++++++++++++++++++++
+ src/ae_epoll_dtoe.c          | 237 ++++++++++++++++
  src/config.c                 |  48 ++++
- src/connection.c             |  60 ++++-
+ src/connection.c             |  61 ++++-
  src/connection.h             |   1 +
- src/networking.c             |  17 ++
- src/server.c                 |  16 ++
- src/server.h                 |   2 +
+ src/networking.c             |  27 +-
+ src/server.c                 |  23 ++
+ src/server.h                 |   3 +
  tests/unit/introspection.tcl |   1 +
- 12 files changed, 801 insertions(+), 15 deletions(-)
+ 12 files changed, 901 insertions(+), 16 deletions(-)
  create mode 100644 src/ae_dtoe.c
  create mode 100644 src/ae_epoll_dtoe.c
 
@@ -67,7 +64,7 @@ index e4f7d9068..fd22552fc 100644
  # redis-sentinel
  $(REDIS_SENTINEL_NAME): $(REDIS_SERVER_NAME)
 diff --git a/src/ae.h b/src/ae.h
-index 70ce8a2d5..149dd6dab 100644
+index 70ce8a2d5..fbf39dd73 100644
 --- a/src/ae.h
 +++ b/src/ae.h
 @@ -53,6 +53,7 @@
@@ -78,12 +75,19 @@ index 70ce8a2d5..149dd6dab 100644
  
  #define AE_NOMORE -1
  #define AE_DELETED_EVENT_ID -1
+@@ -132,5 +133,6 @@ void aeSetAfterSleepProc(aeEventLoop *eventLoop, aeBeforeSleepProc *aftersleep);
+ int aeGetSetSize(aeEventLoop *eventLoop);
+ int aeResizeSetSize(aeEventLoop *eventLoop, int setsize);
+ void aeSetDontWait(aeEventLoop *eventLoop, int noWait);
++int aeRegisterDtoeChannelFds(aeEventLoop *eventLoop);
+ 
+ #endif
 diff --git a/src/ae_dtoe.c b/src/ae_dtoe.c
 new file mode 100644
-index 000000000..1daea7e43
+index 000000000..af006f756
 --- /dev/null
 +++ b/src/ae_dtoe.c
-@@ -0,0 +1,499 @@
+@@ -0,0 +1,504 @@
 +/* A simple event-driven programming library. Originally I wrote this code
 + * for the Jim's event-loop (Jim is a Tcl interpreter) but later translated
 + * it in form of a library for easy reuse.
@@ -583,12 +587,18 @@ index 000000000..1daea7e43
 +void aeSetAfterSleepProc(aeEventLoop *eventLoop, aeBeforeSleepProc *aftersleep) {
 +    eventLoop->aftersleep = aftersleep;
 +}
++
++int aeRegisterDtoeChannelFds(aeEventLoop *eventLoop)
++{
++    return aeApiRegisterDtoeChannelFds(eventLoop);
++}
+\ No newline at end of file
 diff --git a/src/ae_epoll_dtoe.c b/src/ae_epoll_dtoe.c
 new file mode 100644
-index 000000000..9564421a0
+index 000000000..64b8f6105
 --- /dev/null
 +++ b/src/ae_epoll_dtoe.c
-@@ -0,0 +1,161 @@
+@@ -0,0 +1,237 @@
 +/* Linux epoll(2) based ae.c module
 + *
 + * Copyright (c) 2009-2012, Salvatore Sanfilippo <antirez at gmail dot com>
@@ -695,41 +705,117 @@ index 000000000..9564421a0
 +        epoll_ctl(state->epfd,EPOLL_CTL_DEL,fd,&ee);
 +    }
 +}
++ /* Register dtoe channel fds with epoll and save them in aeApiState. */
++ static int aeApiRegisterDtoeChannelFds(aeEventLoop *eventLoop) {
++    aeApiState *state = eventLoop->apidata;
++    return kbdtoe_register_channel_fd_to_epoll(0, state->epfd);
++}
 +
-+static int epoll_wait_count = 0;
++static bool dtoe_need_poll_again = false; /* true if kbdtoe_thread_poll returned more events than consumed */
++// static int epoll_wait_count = 0;
 +#define EPOLL_WAIT_TIMES  1000
 +#define DTOE_RECV_POLL_CNT  32
++
++typedef enum dtoePollMode {
++    DTOE_POLL_MODE_POLL = 0,
++    DTOE_POLL_MODE_EPOLL
++} dtoePollMode;
++
++/* Treat traffic as high only when nr_recv_event is continuously above
++ * threshold for several poll rounds. */
++#define DTOE_HIGH_TRAFFIC_EVENT_THRESHOLD (DTOE_RECV_POLL_CNT >> 2)
++#define DTOE_HIGH_TRAFFIC_STREAK_THRESHOLD 5
++#define DTOE_LOW_TRAFFIC_STREAK_THRESHOLD 1000
++static int dtoe_high_traffic_streak = 0;
++static int dtoe_low_traffic_streak = 0;
++static int cur_poll_mode = 0; // 0 表示dtoe poll模式, 1表示dtoe epoll模式
++
++static dtoePollMode dtoeClassifyPollMode(int nr_recv_event, int cur_poll_mode) {
++    if (nr_recv_event >= DTOE_HIGH_TRAFFIC_EVENT_THRESHOLD) {
++        dtoe_high_traffic_streak++;
++        dtoe_low_traffic_streak = 0;
++    } else {
++        dtoe_low_traffic_streak++;
++        dtoe_high_traffic_streak = 0;
++    }
++
++    if (dtoe_high_traffic_streak >= DTOE_HIGH_TRAFFIC_STREAK_THRESHOLD) {
++        return DTOE_POLL_MODE_POLL;
++    } else if (dtoe_low_traffic_streak >= DTOE_LOW_TRAFFIC_STREAK_THRESHOLD) {
++        return DTOE_POLL_MODE_EPOLL;
++    }
++    return cur_poll_mode;
++}
++
++static int poll_switch_epoll_mode = 0;
 +static int aeApiPoll(aeEventLoop *eventLoop, struct timeval *tvp) {
-+    (void)(tvp);
 +    aeApiState *state = eventLoop->apidata;
 +    int retval = 0, numevents = 0;
-+    int nr_event = 0;
-+    if (eventLoop->flags & AE_USED_DTOE_FEATURE) {
-+        struct knet_recv_events recv_events[eventLoop->maxfd];
-+        kbdtoe_thread_poll(0, recv_events, &nr_event);
-+        for (int i = 0; i < nr_event; ++i) {
-+            eventLoop->fired[numevents].fd = recv_events[i].sockfd;
-+            eventLoop->fired[numevents].mask |= AE_READABLE;
-+            numevents++;
-+        }
-+        epoll_wait_count++;
-+        if (epoll_wait_count >= EPOLL_WAIT_TIMES) {
-+            retval = epoll_wait(state->epfd, state->events,eventLoop->setsize, 0);
-+            epoll_wait_count = 0;
-+        }
++
++    if (dtoe_need_poll_again || cur_poll_mode ==  DTOE_POLL_MODE_POLL) {
++        /* Previous poll had pending events; use non-blocking epoll_wait to
++         * drain any new dtoe events without stalling the event loop. */
++        retval = epoll_wait(state->epfd, state->events, eventLoop->setsize, 0);
 +    } else {
-+        retval = epoll_wait(state->epfd,state->events,eventLoop->setsize,
++        /* Normal path: block up to the timeout waiting for epoll events. */
++        retval = epoll_wait(state->epfd, state->events, eventLoop->setsize,
 +            tvp ? (tvp->tv_sec*1000 + (tvp->tv_usec + 999)/1000) : -1);
 +    }
-+    if (retval > 0) {
++
++    int nr_recv_event = 0;
++    if (retval > 0 || dtoe_need_poll_again || cur_poll_mode == DTOE_POLL_MODE_POLL || poll_switch_epoll_mode) {
++        struct knet_recv_events recv_events[eventLoop->maxfd];
++        nr_recv_event = eventLoop->maxfd; /* size of recv_events */
++        if (eventLoop->flags & AE_USED_DTOE_FEATURE) {
++            dtoe_need_poll_again = kbdtoe_thread_poll(0, recv_events, &nr_recv_event); /* returns true if more events remain */
++
++            /* Use kbdtoe_thread_poll output (nr_recv_event) to estimate current
++             * network traffic; when traffic is high, keep fast-drain mode for
++             * the next loop to reduce backlog latency. */
++            dtoePollMode new_poll_mode = dtoeClassifyPollMode(nr_recv_event, cur_poll_mode);
++            if (poll_switch_epoll_mode && kbdtoe_flexda_dtoe_receive_channel_scq_is_empty()) {
++                kbdtoe_flexda_dtoe_channel_qpc_rx_invalid_set(0);
++                poll_switch_epoll_mode = 0;
++            }
++            if (new_poll_mode != cur_poll_mode) {
++                // 模式 1 epoll -> poll
++                if (cur_poll_mode == DTOE_POLL_MODE_EPOLL && new_poll_mode == DTOE_POLL_MODE_POLL && poll_switch_epoll_mode != 1) {
++                    if (kbdtoe_enable_epoll_mode(new_poll_mode) == 0) {
++                        cur_poll_mode = new_poll_mode;
++                    }
++                }
++
++                // 模式2 poll->epoll
++                if (cur_poll_mode == DTOE_POLL_MODE_POLL && new_poll_mode == DTOE_POLL_MODE_EPOLL && poll_switch_epoll_mode == 0) {
++                    poll_switch_epoll_mode = 1;
++                    kbdtoe_flexda_dtoe_channel_qpc_rx_invalid_set(1);
++                    if (kbdtoe_enable_epoll_mode(new_poll_mode) == 0) {
++                        cur_poll_mode = new_poll_mode;
++                    }
++                }
++            }
++
++            for (int i = 0; i < nr_recv_event; ++i) {
++                eventLoop->fired[numevents].fd = recv_events[i].sockfd;
++                eventLoop->fired[numevents].mask |= AE_READABLE;
++                numevents++;
++            }
++        }
 +        for (int k = 0; k < retval; k++) {
 +            int mask = 0;
 +            struct epoll_event *e = state->events + k;
++
++            /* Skip internal dtoe channel fds; they wake epoll but are not
++             * application-level events and should not be dispatched. */
++            if ((eventLoop->flags & AE_USED_DTOE_FEATURE) && kbdtoe_is_channel_epoll_fd(0, e->data.fd)) {
++                continue;
++            }
++
 +            if (e->events & EPOLLIN) mask |= AE_READABLE;
 +            if (e->events & EPOLLOUT) mask |= AE_WRITABLE;
 +            if (e->events & EPOLLERR) mask |= AE_WRITABLE|AE_READABLE;
 +            if (e->events & EPOLLHUP) mask |= AE_WRITABLE|AE_READABLE;
-+            if (!(eventLoop->flags & AE_USED_DTOE_FEATURE) || !knet_fd_is_offloaded(e->data.fd)) {
++            if (!(eventLoop->flags & AE_USED_DTOE_FEATURE) || !kbdtoe_is_conn_offload(e->data.fd)) {
 +                eventLoop->fired[numevents].fd = e->data.fd;
 +                eventLoop->fired[numevents].mask = mask;
 +                numevents++;
@@ -824,10 +910,10 @@ index bfb49ef9c..1ba67a4d8 100644
      /* SDS Configs */
      createSDSConfig("masterauth", NULL, MODIFIABLE_CONFIG | SENSITIVE_CONFIG, EMPTY_STRING_IS_NULL, server.masterauth, NULL, NULL, NULL),
 diff --git a/src/connection.c b/src/connection.c
-index f61ed2404..7a9abd8fa 100644
+index f61ed2404..2c31596b7 100644
 --- a/src/connection.c
 +++ b/src/connection.c
-@@ -138,33 +138,61 @@ void *connGetPrivateData(connection *conn) {
+@@ -138,33 +138,62 @@ void *connGetPrivateData(connection *conn) {
      return conn->private_data;
  }
  
@@ -840,6 +926,7 @@ index f61ed2404..7a9abd8fa 100644
 +        conn->flags |= CONN_FLAG_CLOSE_SCHEDULED;
 +        return;
 +    }
++    server.stat_numconnections_dtoe--;
 +    zfree(conn);
 +}
 +
@@ -898,7 +985,7 @@ index f61ed2404..7a9abd8fa 100644
      if (ret < 0 && errno != EAGAIN) {
          conn->last_errno = errno;
  
-@@ -179,7 +207,12 @@ static int connSocketWrite(connection *conn, const void *data, size_t data_len)
+@@ -179,7 +208,12 @@ static int connSocketWrite(connection *conn, const void *data, size_t data_len)
  }
  
  static int connSocketWritev(connection *conn, const struct iovec *iov, int iovcnt) {
@@ -912,7 +999,7 @@ index f61ed2404..7a9abd8fa 100644
      if (ret < 0 && errno != EAGAIN) {
          conn->last_errno = errno;
  
-@@ -194,7 +227,12 @@ static int connSocketWritev(connection *conn, const struct iovec *iov, int iovcn
+@@ -194,7 +228,12 @@ static int connSocketWritev(connection *conn, const struct iovec *iov, int iovcn
  }
  
  static int connSocketRead(connection *conn, void *buf, size_t buf_len) {
@@ -939,10 +1026,10 @@ index dad2e2fd6..fc8e7a6ab 100644
  #define CONN_TYPE_SOCKET            1
  #define CONN_TYPE_TLS               2
 diff --git a/src/networking.c b/src/networking.c
-index 90cc64d70..ba7f4be06 100644
+index 90cc64d70..ace805f5c 100644
 --- a/src/networking.c
 +++ b/src/networking.c
-@@ -1229,6 +1229,18 @@ int islocalClient(client *c) {
+@@ -1229,6 +1229,19 @@ int islocalClient(client *c) {
      return !strcmp(cip,"127.0.0.1") || !strcmp(cip,"::1");
  }
  
@@ -958,23 +1045,37 @@ index 90cc64d70..ba7f4be06 100644
 +    return strcmp(cip, peer_ip) && !strcmp(cip, dtoe_ip);
 +}
 +
++static int  MAX_CONNECTIONS_PER_CHANNEL= 8000; // current dtoe's channel support max connections
  void clientAcceptHandler(connection *conn) {
      client *c = connGetPrivateData(conn);
  
-@@ -1281,6 +1293,11 @@ void clientAcceptHandler(connection *conn) {
+@@ -1276,11 +1289,23 @@ void clientAcceptHandler(connection *conn) {
+             return;
+         }
+     }
+-
+     server.stat_numconnections++;
      moduleFireServerEvent(REDISMODULE_EVENT_CLIENT_CHANGE,
                            REDISMODULE_SUBEVENT_CLIENT_CHANGE_CONNECTED,
                            c);
++    // if dtoe connections large than max support,then TCP offload  of this connection  will be disabled.
++    if (server.stat_numconnections_dtoe >= MAX_CONNECTIONS_PER_CHANNEL) {
++        serverLog(LL_WARNING, "dtoe connections large than max support, TCP offload of this connection will be disabled.");
++        return;
++    }
 +    if (server.dtoe_ip[0] != '\0' && !islocalClient(c) && isDtoeClient(c, server.dtoe_ip)) {
 +        int ret = kbdtoe_conn_start_offload(conn->fd);
-+        if (ret == 0 /* DTOE_SUCCESS */) conn->flags |= CONN_FLAG_DTOE;
++        if (ret == 0 /* DTOE_SUCCESS */) {
++            conn->flags |= CONN_FLAG_DTOE;
++            server.stat_numconnections_dtoe++;
++        }
 +        serverLog(LL_VERBOSE, "socket fd :%d start tcp offload, ret:%d", conn->fd, ret);
 +    }
  }
  
  #define MAX_ACCEPTS_PER_CALL 1000
 diff --git a/src/server.c b/src/server.c
-index 9ca360ed4..8b4912bb6 100644
+index 9ca360ed4..85260977a 100644
 --- a/src/server.c
 +++ b/src/server.c
 @@ -62,6 +62,7 @@
@@ -985,7 +1086,15 @@ index 9ca360ed4..8b4912bb6 100644
  #ifdef __linux__
  #include <sys/mman.h>
  #endif
-@@ -2509,6 +2510,9 @@ void initServer(void) {
+@@ -2386,6 +2387,7 @@ void resetServerStats(void) {
+ 
+     server.stat_numcommands = 0;
+     server.stat_numconnections = 0;
++    server.stat_numconnections_dtoe = 0;
+     server.stat_expiredkeys = 0;
+     server.stat_expired_stale_perc = 0;
+     server.stat_expired_time_cap_reached_count = 0;
+@@ -2509,6 +2511,9 @@ void initServer(void) {
      adjustOpenFilesLimit();
      const char *clk_msg = monotonicInit();
      serverLog(LL_NOTICE, "monotonic clock: %s", clk_msg);
@@ -995,7 +1104,7 @@ index 9ca360ed4..8b4912bb6 100644
      server.el = aeCreateEventLoop(server.maxclients+CONFIG_FDSET_INCR);
      if (server.el == NULL) {
          serverLog(LL_WARNING,
-@@ -7126,6 +7130,17 @@ int main(int argc, char **argv) {
+@@ -7126,6 +7131,23 @@ int main(int argc, char **argv) {
          moduleLoadFromQueue();
          ACLLoadUsersAtStartup();
          InitServerLast();
@@ -1007,13 +1116,19 @@ index 9ca360ed4..8b4912bb6 100644
 +            }
 +            serverLog(LL_NOTICE, "user used dtoe feature and kbdtoe init success.");
 +            server.el->flags |= AE_USED_DTOE_FEATURE;
++            /* Register DTOE channel fds to epoll */
++            if (aeRegisterDtoeChannelFds(server.el) != 0) {
++                serverLog(LL_NOTICE, "Failed to register DTOE channel fds to epoll.");
++                exit(0);
++            }
++            serverLog(LL_NOTICE, "kbdtoe channel fds registered to epoll successfully.");
 +        } else {
 +            serverLog(LL_NOTICE, "user dosen't use dtoe feature.");
 +        }
          aofLoadManifestFromDisk();
          loadDataFromDisk();
          aofOpenIfNeededOnServerStart();
-@@ -7170,6 +7185,7 @@ int main(int argc, char **argv) {
+@@ -7170,6 +7192,7 @@ int main(int argc, char **argv) {
  
      aeMain(server.el);
      aeDeleteEventLoop(server.el);
@@ -1022,7 +1137,7 @@ index 9ca360ed4..8b4912bb6 100644
  }
  
 diff --git a/src/server.h b/src/server.h
-index 82e4db938..d150e5667 100644
+index 82e4db938..ffa51efe4 100644
 --- a/src/server.h
 +++ b/src/server.h
 @@ -89,6 +89,7 @@ typedef long long ustime_t; /* microsecond time type. */
@@ -1033,7 +1148,15 @@ index 82e4db938..d150e5667 100644
  
  /* min/max */
  #undef min
-@@ -1735,6 +1736,7 @@ struct redisServer {
+@@ -1560,6 +1561,7 @@ struct redisServer {
+     time_t stat_starttime;          /* Server start time */
+     long long stat_numcommands;     /* Number of processed commands */
+     long long stat_numconnections;  /* Number of connections received */
++    long long stat_numconnections_dtoe;  /* Number of dtoe connections received */
+     long long stat_expiredkeys;     /* Number of expired keys */
+     double stat_expired_stale_perc; /* Percentage of keys probably expired */
+     long long stat_expired_time_cap_reached_count; /* Early expire cycle stops.*/
+@@ -1735,6 +1737,7 @@ struct redisServer {
      int replication_allowed;        /* Are we allowed to replicate? */
      /* Logging */
      char *logfile;                  /* Path of log file */
