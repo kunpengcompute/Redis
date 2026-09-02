@@ -1,5 +1,70 @@
 # Release Notes
 
+<!-- md-trans-meta sourceCommit=3fd807ef3a384848b68cb604076163d72b4e873d translatedAt=2026-08-17T09:53:00.456Z pushedAt=2026-08-20T03:39:59.812Z -->
+
+## 2026-09-30
+
+### Change History
+
+| Version | Release Date   | Description                                                                                                                                 |
+| ---- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| 01   | 2026-09-30 |- Redis floating-point type acceleration |
+| 01   | 2026-09-30 |- Redis jemalloc memory library acceleration |
+
+### Version Mapping
+
+#### Product Version Information
+
+| Product Name      | Product Version     |
+| --------- | -------- |
+| Kunpeng Boostkit | 26.2.RC1 |
+
+#### Software Version Mapping
+
+|Feature Name|Software Type|Version|
+|--|--|--|
+|Redis floating-point type acceleration|OS|openEuler 22.03 LTS SP4 or openEuler 24.03 LTS SP3|
+|Redis floating-point type acceleration|Redis|Redis 7.0.15|
+|Redis floating-point type acceleration|memtier-benchmark|memtier-benchmark 2.1.4|
+|Redis jemalloc memory library acceleration|OS|openEuler 22.03 LTS SP4 or openEuler 24.03 LTS SP3|
+|Redis jemalloc memory library acceleration|Redis|Redis 7.0.15|
+|Redis jemalloc memory library acceleration|memtier-benchmark|memtier-benchmark 2.1.4|
+
+#### Hardware Version Mapping
+
+| Feature          | Item          | Requirement                                      |
+| ------------- | ------------- | ----------------------------------------- |
+| Memory management optimization for performance improvement in Redis <code>rpush</code> scenarios     | Processor           | New Kunpeng 920 processor model or Kunpeng 950 processor                 |
+| Floating-point printing performance improvement in Redis <code>zrange</code> scenarios | Processor           | New Kunpeng 920 processor model or Kunpeng 950 processor                   |
+
+#### Virus Scan Results
+
+Virus scanning is not involved because no software package is released.
+
+### Important Notes
+
+None
+
+### Release Notes
+
+#### Change Description
+
+##### Memory Management Optimization for Performance Improvement in Redis rpush Scenarios
+
+With jemalloc pointer‑tag and tcache optimizations, `rpush` throughput has improved by 5% in a 2-core 2-thread (2C2T) container running a single Redis instance.
+
+##### Floating-Point Printing Performance Improvement in Redis zrange Scenarios
+
+Optimizations focusing on fpconv hotspots have significantly boosted the performance of floating‑point printing for `ZRANGE` in a single‑instance NUMA‑pinned physical environment.
+
+#### Resolved Issues
+
+None
+
+#### Known Issues
+
+None
+
 ## 2026-06-30
 
 ### Change History
@@ -14,7 +79,7 @@
 
 | Product Name     | Version    |
 | --------- | -------- |
-| BoostDB | 26.1.RC1 |
+| Kunpeng Boostkit | 26.1.RC1 |
 
 #### Software Version Mapping
 
@@ -78,7 +143,7 @@ Visit the [open-source repository](https://gitcode.com/boostkit/Redis/tree/maste
 
 | Product Name     | Version    |
 | --------- | -------- |
-| BoostDB | 26.0.RC1 |
+| Kunpeng Boostkit | 26.0.RC1 |
 
 #### Software Version Mapping
 
@@ -91,7 +156,7 @@ Visit the [open-source repository](https://gitcode.com/boostkit/Redis/tree/maste
 
 | Feature         | Item         | Requirement                                     |
 | ------------- | ------------- | ----------------------------------------- |
-| Redis sockmap optimization     | Processor          | New Kunpeng 920 processor model or Kunpeng 950 processor                 |
+| Redis sockmap optimization      | Processor           | New Kunpeng 920 processor model or Kunpeng 950 processor                 |
 
 #### Virus Scan Results
 
