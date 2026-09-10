@@ -2,7 +2,7 @@
 
 ## 特性描述<a name="ZH-CN_TOPIC_0000002518399378"></a>
 
-本文主要介绍如何在使用openEuler操作系统的鲲鹏920系列处理器和鲲鹏950处理器上使能Redis网络异步优化特性及其性能测试方法。
+本文主要介绍如何在使用openEuler操作系统的鲲鹏920新型号处理器和鲲鹏950处理器上使能Redis网络异步优化特性及其性能测试方法。
 
 KRAIO（Kunpeng Redis  Asynchronous I/O）是鲲鹏自研的批量异步IO算法，Redis网络异步化通过将Redis中网络IO操作交由KRAIO异步批量执行，减少系统调用和上下文切换，实现Redis业务无阻塞执行，从而提高Redis吞吐量。通过配置sqpoll模式，KRAIO启用一个内核线程，自动处理网络IO事件，实现无需系统调用完成IO操作。
 
@@ -18,7 +18,7 @@ Redis网络异步优化特性以Patch文件和kraio库的形式，将KRAIO算法
 
 | 项目  | 规格                  |
 | --- | ------------------- |
-| CPU | 鲲鹏920系列处理器、鲲鹏950处理器 |
+| CPU | 鲲鹏920新型号处理器、鲲鹏950处理器 |
 | 网卡  | 25GE网卡\*2           |
 
 **表 2** 操作系统和软件要求<a id="操作系统和软件要求"></a>
@@ -386,28 +386,28 @@ IPVLAN是一种Linux网络设备驱动，它提供了一种轻量级的方式来
 
 1. 下载所需依赖。
 
-   ```shell
+   ```bash
    yum -y install wget git vim tar make gcc gcc-c++ libatomic texinfo libtool
    ```
 
 2. 安装liburing.a依赖库。
 
-   ```shell
-   git clone https://gitee.com/src-openeuler/liburing.git
+   ```bash
+   git clone https://atomgit.com/src-openeuler/liburing.git
    cd liburing
-   tar -zxvf liburing-2.4.tar.gz
-   cd liburing-2.4
+   tar -xjf liburing-2.14.tar.bz2
+   cd liburing-2.14
    make -j
-   make install
+   make install libdir=/usr/lib64
    ```
 
 3. 安装libconfig依赖库。
 
-   ```shell
-   git clone https://gitee.com/src-openeuler/libconfig.git
+   ```bash
+   git clone https://atomgit.com/src-openeuler/libconfig.git
    cd libconfig
-   tar -zxvf v1.8.1.tar.gz
-   cd libconfig-1.8.1
+   tar -zxvf v1.8.2.tar.gz
+   cd libconfig-1.8.2
    autoreconf --install --force
    ./configure --prefix=/usr/local
    make -j
@@ -419,7 +419,7 @@ IPVLAN是一种Linux网络设备驱动，它提供了一种轻量级的方式来
 5. 下载[kraio库](https://gitcode.com/boostkit/Redis/releases/download/BoostDB_Redis_1130/kraio.zip)并解压。
 6. 新建“/etc/kraio”文件夹，将kraio中的kraio.conf文件复制到“/etc/kraio”中。
 
-   ```shell
+   ```bash
    cd kraio
    mkdir /etc/kraio 
    cp conf/kraio.conf /etc/kraio
@@ -427,28 +427,28 @@ IPVLAN是一种Linux网络设备驱动，它提供了一种轻量级的方式来
 
 7. 将下载的so文件和kraio.h文件放到对应路径，并配置环境变量。
 
-   ```shell
+   ```bash
    cp ./libkraio/libkraio.so /usr/lib64 
    cp ./include/kraio.h /usr/include
    export PATH=/usr/local/include:$PATH 
    export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/lib64:/usr/lib
    ```
 
-8. 将Redis中的**redis-7.0.15-adapt-iouring.patch**移到Redis源码目录下，执行合入patch的命令。
+8. 将Redis中的**src/Redis-7.0.15/feature-patches/0001-adapt-iouring.patch**移到Redis源码目录下，执行合入patch的命令。
    > ![](public\_sys-resources/icon-note.gif) **说明：**
    > 此处以Redis 7.0.15为例。对于Redis 6.0.20，请将**redis-6.0.20-adapt-iouring.patch**移到Redis源码目录下，再执行合入patch的命令。后续操作中，请注意替换命令中的版本号。
 
-   ```shell
-   git clone https://gitcode.com/BoostKit/Redis.git
+   ```bash
+   git clone https://gitcode.com/boostkit/Redis.git
    cd Redis
-   cp redis-7.0.15-adapt-iouring.patch path/redis-7.0.15/
+   cp src/Redis-7.0.15/feature-patches/0001-adapt-iouring.patch path/redis-7.0.15/
    cd path/redis-7.0.15
-   patch -p1 < redis-7.0.15-adapt-iouring.patch
+   patch -p1 < 0001-adapt-iouring.patch
    ```
 
 9. 重新编译Redis。
 
-   ```shell
+   ```bash
    cd path/redis-7.0.15
    make distclean
    make -j
@@ -457,13 +457,13 @@ IPVLAN是一种Linux网络设备驱动，它提供了一种轻量级的方式来
 10. 若需要使能poll功能，修改“/etc/kraio/kraio.conf”文件。
     1. 进入/etc/kraio。
 
-       ```shell
+       ```bash
        cd /etc/kraio
        ```
 
     2. 打开kraio.conf。
 
-       ```shell
+       ```bash
        vim kraio.conf
        ```
 
@@ -471,7 +471,7 @@ IPVLAN是一种Linux网络设备驱动，它提供了一种轻量级的方式来
     4. 按“Esc”键，输入 **:wq!**，按“Enter”保存并退出编辑。
 11. 在测试过程中，在服务器端输入如下命令查看，如出现iou-sqp-\*相关线程说明特性使能成功。
 
-    ```shell
+    ```bash
     top -Hp <redis-server实例pid>
     ```
 
@@ -483,20 +483,20 @@ IPVLAN是一种Linux网络设备驱动，它提供了一种轻量级的方式来
 
 1. 在Server端环境分别进入4个Docker容器，每个Docker容器上启动一个网络异步优化后的redis-server实例，共启动4个网络异步优化后的redis-server实例。
 
-   ```shell
+   ```bash
    docker exec -it {容器名} bash 
    ```
 
    - 对于Redis 6.0.20版本：
 
-     ```shell
+     ```bash
      cd path/redis-6.0.20
      ./src/redis-server ./redis.conf --bind 0.0.0.0 --port 6379
      ```
 
    - 对于Redis 7.0.15版本：
 
-     ```shell
+     ```bash
      cd path/redis-7.0.15
      ./src/redis-server ./redis.conf --bind 0.0.0.0 --port 6379
      ```
@@ -570,7 +570,7 @@ IPVLAN是一种Linux网络设备驱动，它提供了一种轻量级的方式来
 
 1. 在Server端执行以下命令进行基础环境配置。
 
-   ```shell
+   ```bash
    systemctl stop firewalld.service
    systemctl disable firewalld.service
    sed -i 's/SELINUX=enforcing/SELINUX=disabled/g' /etc/sysconfig/selinux
@@ -583,19 +583,19 @@ IPVLAN是一种Linux网络设备驱动，它提供了一种轻量级的方式来
 
 2. 设置firewalld在退出时清理内核模块。
 
-   ```shell
+   ```bash
    sed -i "s/CleanupModulesOnExit=no/CleanupModulesOnExit=yes/g" /etc/firewalld/*.conf
    ```
 
 3. 重启firewalld服务。
 
-   ```shell
+   ```bash
    systemctl restart firewalld
    ```
 
 4. 停止firewalld服务。
 
-   ```shell
+   ```bash
    systemctl stop firewalld
    ```
 
@@ -603,7 +603,7 @@ IPVLAN是一种Linux网络设备驱动，它提供了一种轻量级的方式来
    > ![](public\_sys-resources/icon-note.gif) **说明：**
    > 对于Redis 6.0.20，请将步骤[5](#li324mcpsimp)命令中的目录替换成Redis 6.0.20的目录即可，其它操作步骤与Redis 7.0.15一致。
 
-   ```shell
+   ```bash
    docker exec -it {容器名} bash 
    cd path/redis-7.0.15 
    ./src/redis-server ./redis.conf --bind 0.0.0.0 --port 6379
@@ -691,7 +691,7 @@ numactl --cpunodebind=$numa_code redis-benchmark -h 127.0.0.1 -p $port -P 1 -c $
 1. 登录交换机。
 2. 删除interface eth-trunk 12。
 
-   ```shell
+   ```bash
    system-view 
    interface eth-trunk 12 
    undo trunkport 25GE 1/0/33 
@@ -709,7 +709,7 @@ numactl --cpunodebind=$numa_code redis-benchmark -h 127.0.0.1 -p $port -P 1 -c $
 1. 登录Server端。
 2. 停用绑定的连接。
 
-   ```shell
+   ```bash
    nmcli con down bond-slave-eth1 
    nmcli con down bond-slave-eth2 
    nmcli con down bond4
@@ -717,20 +717,20 @@ numactl --cpunodebind=$numa_code redis-benchmark -h 127.0.0.1 -p $port -P 1 -c $
 
 3. 从Bond中移除物理接口。
 
-   ```shell
+   ```bash
    nmcli con delete bond-slave-eth1 
    nmcli con delete bond-slave-eth2
    ```
 
 4. 删除Bond4连接。
 
-   ```shell
+   ```bash
    nmcli con delete bond4
    ```
 
 5. 恢复备份的eth1网卡和eth2网卡的配置文件。
 
-   ```shell
+   ```bash
    cd /etc/sysconfig/network-scripts 
    mv ifcfg-eth1.bak ifcfg-eth1 
    mv ifcfg-eth2.bak ifcfg-eth2 
@@ -754,7 +754,7 @@ IPVLAN在Docker中仍然被标记为实验性功能。
 
 1. 打开文件daemon.json。
 
-   ```shell
+   ```bash
    vi /etc/docker/daemon.json
    ```
 
@@ -769,7 +769,7 @@ IPVLAN在Docker中仍然被标记为实验性功能。
 3. 按“Esc”键，输入 **:wq!**，按“Enter”保存并退出编辑。
 4. 重启Docker服务。
 
-   ```shell
+   ```bash
    sudo systemctl restart docker
    ```
 
@@ -786,7 +786,7 @@ IPVLAN在Docker中仍然被标记为实验性功能。
 
 ASLR（Address Space Layout Randomization，地址空间布局随机化）是一种针对缓冲区溢出的安全保护技术，通过对堆、栈、共享库映射等线性区布局的随机化，增加攻击者预测目的地址的难度，防止攻击者直接定位攻击代码位置，达到阻止溢出攻击的目的。
 
-```shell
+```bash
 echo 2 >/proc/sys/kernel/randomize_va_space
 ```
 
