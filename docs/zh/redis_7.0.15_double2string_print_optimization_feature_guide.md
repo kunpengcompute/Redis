@@ -58,9 +58,9 @@ Redis 7.0.15 物理机单实例绑numa zrange 1000场景。
 | 操作系统 | openEuler 22.03 LTS SP4| 对应鲲鹏920新型号处理器 |
 |  | openEuler 24.03 LTS SP3| 对应鲲鹏950处理器 |
 | 容器 | docker aarch64版本 | 与操作系统配套即可 |
-| Redis | 7.0.15 |  |
-| memtier-benchmark | 2.1.4 |  |
-| double2string optimization patch | 0003-adapt-grisu2-for-double2string.patch |
+| Redis | 7.0.15 | - |
+| memtier-benchmark | 2.1.4 | - |
+| double2string optimization patch | 0003-adapt-grisu2-for-double2string.patch |- |
 
 ## 使用特性
 

@@ -44,9 +44,9 @@ ARM平台的Top Byte Ignore（TBI）特性允许CPU在虚拟地址翻译时忽�
 
 **硬件要求**
 
-集群中各节点硬件要求如表1所示。
+集群中各节点硬件要求如[表1](#硬件要求)所示。
 
-**表 1** 硬件要求
+**表 1** 硬件要求<a id="硬件要求"></a>
 
 | 项目 | 规格 |
 | ---- | ---- |
@@ -54,9 +54,9 @@ ARM平台的Top Byte Ignore（TBI）特性允许CPU在虚拟地址翻译时忽�
 
 **操作系统和软件要求**
 
-集群中各节点软件要求如表2所示。
+集群中各节点软件要求如[表2](#操作系统和软件要求)所示。
 
-**表 2** 操作系统和软件要求
+**表 2** 操作系统和软件要求<a id="操作系统和软件要求"></a>
 
 | 项目 | 版本 | 备注 |
 | ---- | ---- | ---- |
@@ -148,7 +148,7 @@ numactl --cpunodebind=1  redis-7.0.15/src/redis-server  --maxmemory 20G --maxmem
 numactl --cpunodebind=1 /path/memtier_benchmark/memtier_benchmark --server=127.0.0.1 \
 --port=6379 --threads=8 --clients=50 --requests=20001 \
 --key-prefix=lrange:field-max_1000:redis: \
---command="$(printf 'rpush __key__'; for  i in $(seq 1 1000); do printf 'im_a_member_of_list_pading:%d' "$i";done)" --command-key-pattern=S
+--command="$(printf 'rpush __key__'; for  i in $(seq 1 1000); do printf 'im_a_member_of_list_padding:%d' "$i";done)" --command-key-pattern=S
 ```
 
 执行压测，记录压测结果QPS，重复执行多次，取平均值。
