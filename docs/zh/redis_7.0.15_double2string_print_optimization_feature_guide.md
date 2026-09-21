@@ -78,12 +78,16 @@ Redis 7.0.15 物理机单实例绑numa zrange 1000场景。
 
 2. 下载Redis 7.0.15 的源码。
 
+   ```bash
+   wget --no-check-certificate https://download.redis.io/releases/redis-7.0.15.tar.gz
+   ```
+
 3. 将Redis中的 `0003-adapt-grisu2-for-double2string.patch` 移到Redis源码目录下，执行合入patch的命令。
 
    ```bash
-   git clone https://gitcode.com/BoosKit/Redis.git
+   git clone https://gitcode.com/boostkit/Redis.git
    cd Redis
-   cp 0003-adapt-grisu2-for-double2string.patch path/redis-7.0.15
+   cp src/Redis-7.0.15/feature-patches/0003-adapt-grisu2-for-double2string.patch path/redis-7.0.15
    cd path/redis-7.0.15
    patch -p1 < 0003-adapt-grisu2-for-double2string.patch
    ```
@@ -99,7 +103,7 @@ Redis 7.0.15 物理机单实例绑numa zrange 1000场景。
 5. 下载memtier_benchmark 2.1.4 源码并编译。
 
    ```bash
-   git clone https://github.com/RedisLabs/memtier_benchmark.git
+   git clone https://gitcode.com/gh_mirrors/me/memtier_benchmark.git
    cd memtier_benchmark
    git checkout 2.1.4
    autoreconf -ivf

@@ -87,6 +87,10 @@ To enable Arm-based TBI for jemalloc optimization on Redis 7.0.15, you need to a
 
 2. Download the source code of Redis 7.0.15.
 
+   ```bash
+   wget --no-check-certificate https://download.redis.io/releases/redis-7.0.15.tar.gz
+   ```
+
 3. Move `0002-adapt-jemalloc-arm64-pointer-tag-and-gc.patch` in the Redis repository to the Redis source code directory, and apply the patch.
 
    ```bash
