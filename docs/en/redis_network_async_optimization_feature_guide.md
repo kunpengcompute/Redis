@@ -32,7 +32,7 @@ This document provides guidance based on the Kunpeng server and openEuler OS. Be
 | KRAIO affinity kernel  | kernel-5.10.0-275.0.0.178.oe2203sp4.aarch64.rpm or later| Click the [link](https://repo.openeuler.org/openEuler-22.03-LTS-SP4/update/aarch64/Packages/), search for <code>kernel-5.10.0</code> on the page, and download the latest kernel version. The kernel file name is in the format of <code>kernel-5.10.0-xxx.0.0.xxx.oe2203sp4.aarch64.rpm</code>, where <code>xxx</code> indicates the version. A larger value of <code>xxx</code> indicates a later version.|
 | KRAIO patch | 0001-adapt-iouring.patch                   | Only Redis 6.0.20 is supported.<br>[Link](https://gitcode.com/boostkit/Redis/blob/master/src/Redis-6.0.20/feature-patches/0001-adapt-iouring.patch)                                                                                                 |
 | KRAIO patch | 0001-adapt-iouring.patch                     | Only Redis 7.0.15 is supported.<br>[Link](https://gitcode.com/boostkit/Redis/blob/master/src/Redis-7.0.15/feature-patches/0001-adapt-iouring.patch)                                                                                                 |
-| KRAIO library     | libkraio.so and kraio.h                                 | Redis 7.0.15 and Redis 6.0.20 are supported.<br>[Link](https://gitcode.com/boostkit/Redis/releases/download/BoostDB_Redis_1130/kraio.zip)                                                                                   |
+| KRAIO library     | libkraio.so and kraio.h                                 | Redis 7.0.15 and Redis 6.0.20 are supported.<br>[Link](https://gitcode.com/boostkit/Redis/releases/download/BoostDB_Redis_2026630_with_kraio/kraio.zip)                                                                                   |
 
 > ![](public_sys-resources/icon-note.gif) **NOTE:**
 >
@@ -529,7 +529,6 @@ To enable the network asynchronization feature on Redis, install the related dep
    pkill redis-benchmark 
    DATA_LOG="xxx2" # Directory for storing performance test results
    mkdir -p $DATA_LOG 
-   rm -rf ${DATA_LOG}/* 
     
    # Perform the redis-benchmark stress test on the client.
    job_ids="" 
@@ -637,7 +636,6 @@ This section describes how to prepare for and perform a performance stress test 
    pkill redis-benchmark 
    DATA_LOG="xxx2" # Directory for storing performance test results
    mkdir -p $DATA_LOG 
-   rm -rf ${DATA_LOG}/* 
     
    # Perform the redis-benchmark stress test on the client.
    job_ids="" 
