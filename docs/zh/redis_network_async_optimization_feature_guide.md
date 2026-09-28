@@ -32,7 +32,7 @@ Redis网络异步优化特性以Patch文件和kraio库的形式，将KRAIO算法
 | KRAIO亲和内核   | kernel-5.10.0-275.0.0.178.oe2203sp4.aarch64.rpm及以上版本 | 单击[获取链接](https://repo.openeuler.org/openEuler-22.03-LTS-SP4/update/aarch64/Packages/)，在页面中搜索“kernel-5.10.0”，请在搜索结果中选择最新的内核版本进行下载。内核文件名如kernel-5.10.0-xxx.0.0.xxx.oe2203sp4.aarch64.rpm所示，其中xxx越大，代表版本越新。 |
 | KRAIO patch | 0001-adapt-iouring.patch                  | 只适配Redis 6.0.20。<br>[获取链接](https://gitcode.com/boostkit/Redis/blob/master/src/Redis-6.0.20/feature-patches/0001-adapt-iouring.patch)                                                                                                  |
 | KRAIO patch | 0001-adapt-iouring.patch                    | 只适配Redis 7.0.15。<br>[获取链接](https://gitcode.com/boostkit/Redis/blob/master/src/Redis-7.0.15/feature-patches/0001-adapt-iouring.patch)                                                                                                  |
-| KRAIO库      | libkraio.so和kraio.h                                  | 适配Redis 7.0.15和Redis 6.0.20。[获取链接](https://gitcode.com/boostkit/Redis/releases/download/BoostDB_Redis_1130/kraio.zip)                                                                                    |
+| KRAIO库      | libkraio.so和kraio.h                                  | 适配Redis 7.0.15和Redis 6.0.20。[获取链接](https://gitcode.com/boostkit/Redis/releases/download/BoostDB_Redis_2026630_with_kraio/kraio.zip)                                                                                    |
 
 > ![](public\_sys-resources/icon-note.gif) **说明：**
 >
@@ -527,7 +527,6 @@ IPVLAN是一种Linux网络设备驱动，它提供了一种轻量级的方式来
    pkill redis-benchmark 
    DATA_LOG="xxx2" # 性能数据结果存放目录
    mkdir -p $DATA_LOG 
-   rm -rf ${DATA_LOG}/* 
     
    # 在Client端进行redis-benchmark压测 
    job_ids="" 
@@ -635,7 +634,6 @@ IPVLAN是一种Linux网络设备驱动，它提供了一种轻量级的方式来
    pkill redis-benchmark 
    DATA_LOG="xxx2" # 性能数据结果存放目录
    mkdir -p $DATA_LOG 
-   rm -rf ${DATA_LOG}/* 
     
    # 在Client端进行redis-benchmark压测 
    job_ids="" 
