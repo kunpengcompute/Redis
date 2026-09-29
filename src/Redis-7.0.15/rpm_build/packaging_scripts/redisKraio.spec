@@ -5,10 +5,10 @@ Summary:        Redis with io_uring support via kraio
 License:        BSD
 URL:            https://redis.io
 Source0:        redis-7.0.15.tar.gz
-Source1:        liburing-2.4.tar.gz
-Source2:        libconfig-1.8.1.tar.gz
+Source1:        liburing-2.14.tar.bz2
+Source2:        libconfig-1.8.2.tar.gz
 Source3:        kraio.tar.gz
-Patch0:         redis-7.0.15-adapt-iouring.patch
+Patch0:         0001-adapt-iouring.patch
 
 # 禁用 debuginfo，避免 strip
 %global debug_package %{nil}
@@ -16,7 +16,7 @@ Patch0:         redis-7.0.15-adapt-iouring.patch
 %define debuginfo_packages %{nil}
 
 # 构建依赖
-BuildRequires:  gcc, make, wget, git, tar, patch, texinfo
+BuildRequires:  gcc, make, wget, git, tar, patch, texinfo, unzip
 BuildRequires:  autoconf, automake, libtool, libuuid-devel
 BuildRequires:  liburing-devel, libconfig-devel, systemd-devel
 
@@ -71,7 +71,7 @@ mkdir -p %{_target_platform}
 
 # 解压源码
 tar -xzf %{SOURCE0} -C %{_target_platform}
-tar -xzf %{SOURCE1} -C %{_target_platform}  # 仅用于编译，不安装
+tar -xjf %{SOURCE1} -C %{_target_platform}  # 仅用于编译，不安装
 tar -xzf %{SOURCE2} -C %{_target_platform}  # 仅用于编译，不安装
 tar -xzf %{SOURCE3} -C %{_target_platform}
 
@@ -80,42 +80,32 @@ cp %{PATCH0} .
 
 # 打补丁到 Redis
 cd %{_target_platform}/redis-%{version}
-cp ../../redis-7.0.15-adapt-iouring.patch .
-patch -p1 < redis-7.0.15-adapt-iouring.patch
+cp ../../0001-adapt-iouring.patch .
+patch -p1 < 0001-adapt-iouring.patch
 
 %build
 cd %{_target_platform}
 TOP_DIR=$(pwd)
 
 # 构建 liburing（仅用于链接，不安装）
-cd liburing-2.4
+cd liburing-2.14
 make clean
 make -j %{?_smp_mflags} CFLAGS="-g -O2 -fPIC"
 cd ..
 
 # 构建 libconfig（仅用于链接，不安装）
-cd libconfig-1.8.1
+cd libconfig-1.8.2
 autoreconf --install --force
 ./configure --prefix=/usr --libdir=%{_libdir} --disable-static CFLAGS="-g -O2" >/dev/null
 make -j %{?_smp_mflags} >/dev/null
-cd ..
-
-# 构建 kraio
-cd kraio
-ln -sf $TOP_DIR/liburing-2.4/src/include/liburing.h include/liburing.h
-make clean
-make CC=gcc \
-     LDFLAGS="-shared -fPIC -L../liburing-2.4/src -L../libconfig-1.8.1/lib" \
-     LIBS="-luring -lconfig -ldl" \
-     CFLAGS="-fPIC -I../libconfig-1.8.1/lib -Iinclude"
 cd ..
 
 # 构建 Redis
 cd redis-%{version}
 make -j %{?_smp_mflags} \
      MALLOC=libc \
-     CFLAGS="-I../kraio/include" \
-     LDFLAGS="-L../kraio"
+     CFLAGS="-I${TOP_DIR}/kraio/include" \
+     LDFLAGS="-L${TOP_DIR}/kraio/libkraio"
 %install
 # 清理
 rm -rf %{buildroot}
@@ -127,10 +117,11 @@ mkdir -p %{buildroot}%{_includedir}
 mkdir -p %{buildroot}%{_sysconfdir}/kraio
 mkdir -p %{buildroot}%{_sysconfdir}/ld.so.conf.d
 
-# 安装 kraio 库和头文件
-install -m 755 %{_target_platform}/kraio/libkraio.so %{buildroot}%{_libdir}/libkraio.so
-install -m 644 %{_target_platform}/kraio/include/kraio.h %{buildroot}%{_includedir}/kraio.h
-install -m 644 %{_target_platform}/kraio/conf/iouring.conf %{buildroot}%{_sysconfdir}/kraio/iouring.conf
+cp %{_target_platform}/kraio  . -rf
+install -m 755 kraio/libkraio/libkraio.so %{buildroot}%{_libdir}/libkraio.so
+install -m 644 kraio/include/kraio.h %{buildroot}%{_includedir}/kraio.h
+install -m 644 kraio/conf/kraio.conf %{buildroot}%{_sysconfdir}/kraio/kraio.conf
+rm -rf kraio
 
 # 安装 ldconfig 配置
 echo '/usr/lib64' > %{buildroot}%{_sysconfdir}/ld.so.conf.d/kraio.conf
@@ -151,9 +142,6 @@ install -m 644 redis.conf              %{buildroot}%{_sysconfdir}/kraio/redis.co
 # 首次安装提示
 if [ "$1" = "1" ]; then
     echo "Redis with kraio installed successfully."
-    echo "Please configure /etc/kraio/iouring.conf:"
-    echo "  send_callback=1"
-    echo "Start Redis with: redis-server /etc/kraio/redis.conf.default"
 fi
 
 %postun
@@ -179,7 +167,7 @@ fi
 
 # Configuration
 %config(noreplace) %{_sysconfdir}/kraio/redis.conf.default
-%config(noreplace) %{_sysconfdir}/kraio/iouring.conf
+%config(noreplace) %{_sysconfdir}/kraio/kraio.conf
 %config %{_sysconfdir}/ld.so.conf.d/kraio.conf
 
 %changelog

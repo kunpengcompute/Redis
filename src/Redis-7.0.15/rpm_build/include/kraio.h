@@ -17,10 +17,10 @@
 #include <stdarg.h>
 #include <sys/uio.h>
 
-size_t write_async(int fd, const void *buf, size_t count, void *para1, void *para2, void *para3);
-size_t writev_async(int fd, const void *buf, size_t count, void *para1, void *para2, void *para3);
-typedef void (*write_callback_t)(int ret, void *buf, int len, void *para1, void *para2, void *para3);
-typedef void (*writev_callback_t)(int ret, struct iovec *iov, int iovcnt, void *para1, void *para2, void *para3);
+size_t write_async(int fd, const void *buf, size_t count);
+size_t writev_async(int fd, const void *buf, size_t count);
+typedef void (*write_callback_t)(int ret, int fd);
+typedef void (*writev_callback_t)(int ret, int fd);
 void register_write_callback(write_callback_t cb);
 void register_writev_callback(writev_callback_t cb);
 

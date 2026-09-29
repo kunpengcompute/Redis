@@ -10,6 +10,7 @@
 # See the Mulan PSL v2 for more details.
 # Description: Automatically build a standardized rpmbuild directory structure. Simultaneously, prepare the necessary
 # community source code and optimization patches for RPM package construction.Ensure external network access for the server.
+set -euo pipefail
 
 RPMBUILD_DIR=~/rpmbuild
 SOURCES=$RPMBUILD_DIR/SOURCES
@@ -50,20 +51,18 @@ cd ..
 rm -rf libconfig
 
 echo "📥 下载 kraio..."
-git clone https://gitcode.com/BoostKit/kraio.git
-cd kraio
-git archive --format=tar --prefix=kraio/ --output=$SOURCES/kraio.tar HEAD
-gzip $SOURCES/kraio.tar
-cd ..
-rm -rf kraio
+wget https://gitcode.com/boostkit/Redis/releases/download/BoostDB_Redis_2026630_with_kraio/kraio.zip --no-check-certificate
+unzip -q kraio.zip
+tar -czf $SOURCES/kraio.tar.gz kraio
+rm -rf kraio kraio.zip
 
 git clone https://gitcode.com/BoostKit/Redis.git
 cd Redis
 
-if [ -f "redis-7.0.15-adapt-iouring.patch" ]; then
-    cp redis-7.0.15-adapt-iouring.patch $SOURCES/
+if [ -f "src/Redis-7.0.15/feature-patches/0001-adapt-iouring.patch" ]; then
+    cp src/Redis-7.0.15/feature-patches/0001-adapt-iouring.patch $SOURCES/
 else
-    echo " 错误：未找到 redis-7.0.15-adapt-iouring.patch"
+    echo " 错误：未找到 src/Redis-7.0.15/feature-patches/0001-adapt-iouring.patch"
     exit 1
 fi
 cd ..
