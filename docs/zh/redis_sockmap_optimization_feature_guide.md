@@ -145,13 +145,13 @@ Redis sockmap优化特性通过将参与通信的socket对象存入BPF map（soc
     ./netacc enable /mnt/cgroup2/
     ```
 
-11. 使用bpftool确认sockmap特性是否使能成功，回显信息中包含名为netaccsock\_map的相关内容表示启用成功。
+11. 使用bpftool确认sockmap特性是否使能成功，回显信息中包含名为netaccsock_map的相关内容表示启用成功。
 
     ```shell
     bpftool map show
     ```
 
-    ![步骤11执行bpftool map show的终端回显，可见名为netacc_sock_map的map条目表示特性使能成功](figures/zh-cn_image_0000002542631005.png)
+    ![步骤11执行bpftool map show的终端回显，可见名为netaccsock_map的map条目表示特性使能成功](figures/zh-cn_image_0000002542631005.png)
 
 12. （可选）通过redis-benchmark测试可以得到使能本特性前后的性能提升效果，详细测试步骤请参见《[redis-benchmark测试指导](https://www.hikunpeng.com/document/detail/zh/kunpengdbs/testguide/tstg/kunpengredis-benchmark_02_0001.html)》。sockmap优化特性可以使redis-benchmark 2U8G规格下非pipeline场景综合性能（SET、GET）提升5%以上，优化前后对比效果如[**图 2** sockmap优化特性优化前后性能对比](#sockmap优化特性优化前后性能对比)所示。
 
