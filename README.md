@@ -1,11 +1,15 @@
 ﻿# Redis 网络优化特性
 
+本文档介绍Redis网络优化特性，提供KRAIO（Kunpeng Redis Asynchronous I/O）方案、Redis 6.0.20/7.0.15适配补丁及配套文档，通过将Redis网络I/O处理异步化、批量化提升吞吐能力，适用于需要使用Redis网络异步优化与sockmap优化补丁的用户。
+
 ## 项目品牌名称
 
 Kunpeng BoostKit Redis
 
 ## 变更通知
 
+- [2026.09.30]：首次发布Redis浮点类型加速特性和Redis jemalloc内存库加速特性。
+- [2026.06.30]：持续优化Redis网络异步优化特性。
 - [2026.03.05]：重构README。
 - [2025.03.30]：新增Redis网络异步优化特性使用指南和版本说明书。
 
