@@ -101,7 +101,7 @@ make -j
 |--|--|
 | `docs/zh/redis_network_async_optimization_feature_guide.md` | 中文网络异步优化特性说明、环境部署与验证流程 |
 | `docs/zh/redis_release_notes.md` | 中文版本配套与变更说明 |
-| `docs/zh/redis_sockmap_optimization_feature_guide.md` | 中文 Sockmap 优化特性说明 |
+| `docs/zh/redis_sockmap_optimization_feature_guide.md` | 中文Sockmap优化特性说明 |
 | `docs/zh/redis_7.0.15_double2string_print_optimization_feature_guide.md` | 中文Redis 7.0.15 浮点类型加速特性说明 |
 | `docs/zh/redis_7.0.15_jemalloc_optimization_feature_guide.md` | 中文Redis jemalloc内存库加速特性说明 |
 
