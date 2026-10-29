@@ -187,7 +187,7 @@ Bond4是网络接口绑定（Network Interface Bonding）中的模式4，也称�
 
    添加IP地址，将“BOOTPROTO=dhcp”改成“BOOTPROTO=none”。
 
-   ```bash
+   ```txt
    IPADDR=192.168.xx.xx 
    NETMASK=255.255.255.0 
    BOOTPROTO=none
@@ -419,7 +419,7 @@ IPVLAN是一种Linux网络设备驱动，它提供了一种轻量级的方式来
    ```
 
 4. 请参见[表 2 操作系统和软件要求](#操作系统和软件要求)下载Redis 7.0.15配套网络异步优化特性patch包。
-5. 下载[kraio库](https://gitcode.com/boostkit/Redis/releases/download/BoostDB_Redis_1130/kraio.zip)并解压。
+5. 请参见[表 2 操作系统和软件要求](#操作系统和软件要求)下载kraio库并解压。
 6. 新建“/etc/kraio”文件夹，将kraio中的kraio.conf文件复制到“/etc/kraio”中。
 
    ```bash
@@ -692,7 +692,7 @@ numactl --cpunodebind=$numa_code redis-benchmark -h 127.0.0.1 -p $port -P 1 -c $
 1. 登录交换机。
 2. 删除interface eth-trunk 12。
 
-   ```json
+   ```bash
    system-view 
    interface eth-trunk 12 
    undo trunkport 25GE 1/0/33 
@@ -761,7 +761,7 @@ IPVLAN在Docker中仍然被标记为实验性功能。
 
 2. 按“i”进入编辑模式，修改字段（如果文件内已有内容，将以下字段添加至顶部）。
 
-   ```bash
+   ```json
    { 
       "experimental": true 
    }

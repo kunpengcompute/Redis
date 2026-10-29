@@ -32,12 +32,23 @@ Kunpeng BoostKit Redis
     ├── LICENSE
     ├── zh
     │   ├── redis_network_async_optimization_feature_guide.md
-    │   ├── redis_network_async_optimization_release_notes.md
-    │   ├── redis_sockmap_optimization_feature_guide.md
-    │   └── redis_sockmap_optimization_release_notes.md
+    │   ├── redis_7.0.15_double2string_print_optimization_feature_guide.md
+    │   ├── redis_sockmap_optimization_feature_guide.
+    │   ├── redis_release_notes.md
+    │   └── redis_7.0.15_jemalloc_optimization_feature_guide.md
 ```
 
 ## 特性介绍
+
+### Redis 7.0.15 浮点类型加速
+
+- 特性指南：`docs/zh/redis_7.0.15_double2string_print_optimization_feature_guide.md`
+- 适配补丁：`0003-adapt-grisu2-for-double2string.patch`
+
+### Redis jemalloc内存库加速
+
+- 特性指南：`docs/zh/redis_7.0.15_jemalloc_optimization_feature_guide.md`
+- 适配补丁：`0002-adapt-jemalloc-arm64-pointer-tag-and-gc.patch`
 
 ### Redis 6.0.20 网络异步优化
 
@@ -53,13 +64,13 @@ Kunpeng BoostKit Redis
 ### Redis sockmap优化
 
 - 特性指南：`docs/zh/redis_sockmap_optimization_feature_guide.md`
-- 版本说明：`docs/zh/redis_sockmap_optimization_release_notes.md`
+- 版本说明：`docs/zh/redis_release_notes.md`
 
 ## 版本说明
 
 版本说明包含软件版本配套、特性变更与问题说明，详见：
 
-- 中文：`docs/zh/redis_network_async_optimization_release_notes.md`
+- 中文：`docs/zh/redis_release_notes.md`
 
 ## 快速入门
 
@@ -88,10 +99,11 @@ make -j
 
 | 文档 | 说明 |
 |--|--|
-| `docs/zh/redis_network_async_optimization_feature_guide.md` | 中文特性说明、环境部署与验证流程 |
-| `docs/zh/redis_network_async_optimization_release_notes.md` | 中文版本配套与变更说明 |
-| `docs/zh/redis_sockmap_optimization_feature_guide.md` | 中文 Sockmap 优化特性说明 |
-| `docs/zh/redis_sockmap_optimization_release_notes.md` | 中文 Sockmap 优化版本说明 |
+| `docs/zh/redis_network_async_optimization_feature_guide.md` | 中文网络异步优化特性说明、环境部署与验证流程 |
+| `docs/zh/redis_release_notes.md` | 中文版本配套与变更说明 |
+| `docs/zh/redis_sockmap_optimization_feature_guide.md` | 中文Sockmap优化特性说明 |
+| `docs/zh/redis_7.0.15_double2string_print_optimization_feature_guide.md` | 中文Redis 7.0.15 浮点类型加速特性说明 |
+| `docs/zh/redis_7.0.15_jemalloc_optimization_feature_guide.md` | 中文Redis jemalloc内存库加速特性说明 |
 
 ## 兼容性信息
 
