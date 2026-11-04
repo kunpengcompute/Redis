@@ -1,0 +1,1246 @@
+From 0fbd1ea649910217e11d68a0f0c440bd14287694 Mon Sep 17 00:00:00 2001
+From: Sun_liuy <1422711030@qq.com>
+Date: Wed, 4 Nov 2026 10:45:18 +0800
+Subject: [PATCH] Add CRC16 PMULL optimization and correctness tests
+
+---
+ src/Makefile                  |  41 +++-
+ src/crc16.c                   | 183 ++++++++++++++-
+ src/crc16_xmodem_dispatch.c   |  37 +++
+ src/crc16_xmodem_pmull.S      | 140 ++++++++++++
+ src/crc16_xmodem_pmull_8way.S | 409 ++++++++++++++++++++++++++++++++++
+ src/crc16_xmodem_short.S      | 342 ++++++++++++++++++++++++++++
+ 6 files changed, 1145 insertions(+), 7 deletions(-)
+ create mode 100644 src/crc16_xmodem_dispatch.c
+ create mode 100644 src/crc16_xmodem_pmull.S
+ create mode 100644 src/crc16_xmodem_pmull_8way.S
+ create mode 100644 src/crc16_xmodem_short.S
+
+diff --git a/src/Makefile b/src/Makefile
+index b0a2ac1..728f04f 100644
+--- a/src/Makefile
++++ b/src/Makefile
+@@ -321,9 +321,33 @@ REDIS_CLI_NAME=redis-cli$(PROG_SUFFIX)
+ REDIS_CLI_OBJ=anet.o adlist.o dict.o redis-cli.o zmalloc.o release.o ae.o redisassert.o crcspeed.o crc64.o siphash.o crc16.o monotonic.o cli_common.o mt19937-64.o
+ REDIS_BENCHMARK_NAME=redis-benchmark$(PROG_SUFFIX)
+ REDIS_BENCHMARK_OBJ=ae.o anet.o redis-benchmark.o adlist.o dict.o zmalloc.o redisassert.o release.o crcspeed.o crc64.o siphash.o crc16.o monotonic.o cli_common.o mt19937-64.o
++# CRC16/XMODEM kernels for ARM64.
++CRC16_PMULL?=yes
++CRC16_SHA3?=yes
++CRC16_SVE?=yes
++CRC16_XMODEM_ASM_OBJ=crc16_xmodem_pmull.o crc16_xmodem_pmull_8way.o crc16_xmodem_short.o
++ifeq ($(uname_S),Linux)
++ifeq ($(uname_M),aarch64)
++ifeq ($(CRC16_PMULL),yes)
++FINAL_CFLAGS+=-DREDIS_CRC16_PMULL
++ifeq ($(CRC16_SHA3),yes)
++FINAL_CFLAGS+=-DREDIS_CRC16_SHA3
++CRC16_ASM_FLAGS+=-DCRC16_USE_SHA3
++endif
++ifeq ($(CRC16_SVE),yes)
++FINAL_CFLAGS+=-DREDIS_CRC16_SVE
++crc16_xmodem_pmull_8way.o: CRC16_ASM_FLAGS+=-DCRC16_USE_SVE
++endif
++CRC16_XMODEM_OBJ=crc16_xmodem_dispatch.o $(CRC16_XMODEM_ASM_OBJ)
++REDIS_SERVER_OBJ+=$(CRC16_XMODEM_OBJ)
++REDIS_CLI_OBJ+=$(CRC16_XMODEM_OBJ)
++REDIS_BENCHMARK_OBJ+=$(CRC16_XMODEM_OBJ)
++endif
++endif
++endif
+ REDIS_CHECK_RDB_NAME=redis-check-rdb$(PROG_SUFFIX)
+ REDIS_CHECK_AOF_NAME=redis-check-aof$(PROG_SUFFIX)
+-ALL_SOURCES=$(sort $(patsubst %.o,%.c,$(REDIS_SERVER_OBJ) $(REDIS_CLI_OBJ) $(REDIS_BENCHMARK_OBJ)))
++ALL_SOURCES=$(filter-out $(CRC16_XMODEM_ASM_OBJ:.o=.c),$(sort $(patsubst %.o,%.c,$(REDIS_SERVER_OBJ) $(REDIS_CLI_OBJ) $(REDIS_BENCHMARK_OBJ))))
+ 
+ all: $(REDIS_SERVER_NAME) $(REDIS_SENTINEL_NAME) $(REDIS_CLI_NAME) $(REDIS_BENCHMARK_NAME) $(REDIS_CHECK_RDB_NAME) $(REDIS_CHECK_AOF_NAME)
+ 	@echo ""
+@@ -402,6 +426,9 @@ DEP = $(REDIS_SERVER_OBJ:%.o=%.d) $(REDIS_CLI_OBJ:%.o=%.d) $(REDIS_BENCHMARK_OBJ
+ %.o: %.c .make-prerequisites
+ 	$(REDIS_CC) -MMD -o $@ -c $<
+ 
++$(CRC16_XMODEM_ASM_OBJ): %.o: %.S .make-prerequisites
++	$(REDIS_CC) $(CRC16_ASM_FLAGS) -MMD -o $@ -c $<
++
+ # The file commands.c is checked in and doesn't normally need to be rebuilt. It
+ # is built only if python is available and its prereqs are modified.
+ ifneq (,$(PYTHON))
+@@ -410,7 +437,7 @@ commands.c: commands/*.json ../utils/generate-command-code.py
+ endif
+ 
+ clean:
+-	rm -rf $(REDIS_SERVER_NAME) $(REDIS_SENTINEL_NAME) $(REDIS_CLI_NAME) $(REDIS_BENCHMARK_NAME) $(REDIS_CHECK_RDB_NAME) $(REDIS_CHECK_AOF_NAME) *.o *.gcda *.gcno *.gcov redis.info lcov-html Makefile.dep
++	rm -rf $(REDIS_SERVER_NAME) $(REDIS_SENTINEL_NAME) $(REDIS_CLI_NAME) $(REDIS_BENCHMARK_NAME) $(REDIS_CHECK_RDB_NAME) $(REDIS_CHECK_AOF_NAME) *.o *.gcda *.gcno *.gcov redis.info lcov-html Makefile.dep crc16-test
+ 	rm -f $(DEP)
+ 
+ .PHONY: clean
+@@ -423,6 +450,16 @@ distclean: clean
+ 
+ .PHONY: distclean
+ 
++# 独立校验 CRC16 的标量和当前硬件支持的汇编路径。
++# Linux ARM64 可用 CRC16_SHA3=no CRC16_SVE=no 分别验证回退构建。
++crc16-test: crc16.c .make-prerequisites $(CRC16_XMODEM_OBJ)
++	$(REDIS_CC) -DCRC16_TEST_MAIN -o $@ crc16.c $(CRC16_XMODEM_OBJ) $(FINAL_LDFLAGS)
++
++test-crc16: crc16-test
++	./crc16-test
++
++.PHONY: test-crc16
++
+ test: $(REDIS_SERVER_NAME) $(REDIS_CHECK_AOF_NAME) $(REDIS_CLI_NAME) $(REDIS_BENCHMARK_NAME)
+ 	@(cd ..; ./runtest)
+ 
+diff --git a/src/crc16.c b/src/crc16.c
+index 7b8c1da..0e0e7ca 100644
+--- a/src/crc16.c
++++ b/src/crc16.c
+@@ -1,4 +1,33 @@
+-#include "server.h"
++#ifdef CRC16_TEST_MAIN
++#define _GNU_SOURCE
++#endif
++#include <stdint.h>
++
++#if defined(REDIS_CRC16_PMULL) && defined(__linux__) && defined(__aarch64__) && \
++    defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
++#include <sys/auxv.h>
++#include <asm/hwcap.h>
++extern uint16_t crc16_xmodem(uint16_t, const uint8_t *, uint64_t);
++static int crc16_has_optimized;
++#ifdef REDIS_CRC16_SVE
++int crc16_use_sve_wide;
++#endif
++__attribute__((constructor)) static void crc16InitOptimized(void) {
++    unsigned long hw = getauxval(AT_HWCAP);
++    unsigned long required = HWCAP_PMULL;
++#ifdef REDIS_CRC16_SHA3
++    required |= HWCAP_SHA3;
++#endif
++    int available = (hw & required) == required;
++#ifdef REDIS_CRC16_SVE
++    unsigned long hw2 = getauxval(AT_HWCAP2);
++    crc16_use_sve_wide = available && (hw & HWCAP_SVE) &&
++        (hw2 & (HWCAP2_SVE2 | HWCAP2_SVEPMULL)) == (HWCAP2_SVE2 | HWCAP2_SVEPMULL);
++#endif
++    crc16_has_optimized = available;
++}
++#define CRC16_USE_OPTIMIZED
++#endif
+ 
+ /*
+  * Copyright 2001-2010 Georges Menie (www.menie.org)
+@@ -79,10 +108,154 @@ static const uint16_t crc16tab[256]= {
+     0x6e17,0x7e36,0x4e55,0x5e74,0x2e93,0x3eb2,0x0ed1,0x1ef0
+ };
+ 
++#ifdef CRC16_USE_OPTIMIZED
++uint16_t crc16_xmodem_scalar(uint16_t crc, const uint8_t *buf, uint64_t len) {
++#else
++static uint16_t crc16_xmodem_scalar(uint16_t crc, const uint8_t *buf, uint64_t len) {
++#endif
++    for (uint64_t i = 0; i < len; i++)
++        crc = (uint16_t)((crc << 8) ^ crc16tab[((crc >> 8) ^ buf[i]) & 0xff]);
++    return crc;
++}
++
+ uint16_t crc16(const char *buf, int len) {
+-    int counter;
+-    uint16_t crc = 0;
+-    for (counter = 0; counter < len; counter++)
+-            crc = (crc<<8) ^ crc16tab[((crc>>8) ^ *buf++)&0x00FF];
++    if (len <= 0) return 0;
++#ifdef CRC16_USE_OPTIMIZED
++    if (crc16_has_optimized)
++        return crc16_xmodem(0, (const uint8_t *)buf, (uint64_t)len);
++#endif
++    return crc16_xmodem_scalar(0, (const uint8_t *)buf, (uint64_t)len);
++}
++
++#ifdef CRC16_TEST_MAIN
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#ifdef __linux__
++#include <sys/mman.h>
++#include <unistd.h>
++#endif
++
++/* 独立的逐位参考算法，避免测试和生产路径共享查表错误。 */
++static uint16_t crc16Reference(uint16_t crc, const uint8_t *buf, size_t len) {
++    for (size_t i = 0; i < len; i++) {
++        crc ^= (uint16_t)buf[i] << 8;
++        for (int bit = 0; bit < 8; bit++)
++            crc = (uint16_t)((crc << 1) ^ ((crc & 0x8000) ? 0x1021 : 0));
++    }
+     return crc;
+ }
++
++static void crc16Check(const char *path, uint16_t actual, uint16_t expected,
++                       size_t len, unsigned int seed, unsigned int offset) {
++    if (actual != expected) {
++        fprintf(stderr, "%s: len=%zu seed=%04x offset=%u actual=%04x expected=%04x\n",
++                path, len, seed, offset, actual, expected);
++        exit(1);
++    }
++}
++
++#ifdef CRC16_USE_OPTIMIZED
++extern uint16_t crc16_xmodem_short(uint16_t, const uint8_t *, uint64_t);
++extern uint16_t crc16_xmodem_pmull(uint16_t, const uint8_t *, uint64_t);
++extern uint16_t crc16_xmodem_pmull_8way_neon(uint16_t, const uint8_t *, uint64_t);
++#ifdef REDIS_CRC16_SVE
++extern uint16_t crc16_xmodem_pmull_8way(uint16_t, const uint8_t *, uint64_t);
++#endif
++#endif
++
++static void crc16CheckPaths(const uint8_t *buf, size_t len, uint16_t seed,
++                            uint16_t expected, unsigned int offset) {
++    crc16Check("scalar", crc16_xmodem_scalar(seed, buf, len), expected, len, seed, offset);
++    if (seed == 0)
++        crc16Check("public", crc16((const char *)buf, (int)len), expected, len, seed, offset);
++#ifdef CRC16_USE_OPTIMIZED
++    /* 硬件能力不足时不直接调用包含可选指令的入口。 */
++    if (crc16_has_optimized) {
++        crc16Check("dispatch", crc16_xmodem(seed, buf, len), expected, len, seed, offset);
++        if (len >= 16)
++            crc16Check("short", crc16_xmodem_short(seed, buf, len), expected, len, seed, offset);
++        crc16Check("pmull", crc16_xmodem_pmull(seed, buf, len), expected, len, seed, offset);
++        crc16Check("neon", crc16_xmodem_pmull_8way_neon(seed, buf, len), expected, len, seed, offset);
++#ifdef REDIS_CRC16_SVE
++        if (crc16_use_sve_wide)
++            crc16Check("sve", crc16_xmodem_pmull_8way(seed, buf, len), expected, len, seed, offset);
++#endif
++    }
++#endif
++}
++
++static void crc16CheckBuffer(const uint8_t *buf, size_t len, unsigned int offset) {
++    static const uint16_t seeds[] = {0, 1, 0x1021, 0x8000, 0xffff};
++    for (size_t i = 0; i < sizeof(seeds) / sizeof(seeds[0]); i++) {
++        uint16_t expected = crc16Reference(seeds[i], buf, len);
++        crc16CheckPaths(buf, len, seeds[i], expected, offset);
++    }
++}
++
++int main(void) {
++    static const size_t large_lengths[] = {4097, 8191, 8192, 8193, 16383,
++                                           16384, 16385, 32767, 32768, 32769};
++    uint8_t buf[32769 + 16];
++    uint32_t random = 0x12345678;
++    for (size_t i = 0; i < sizeof(buf); i++) {
++        random ^= random << 13;
++        random ^= random >> 17;
++        random ^= random << 5;
++        buf[i] = (uint8_t)random;
++    }
++    crc16Check("XMODEM vector", crc16("123456789", 9), 0x31c3, 9, 0, 0);
++    crc16Check("negative length", crc16(NULL, -1), 0, 0, 0, 0);
++    for (unsigned int offset = 0; offset < 16; offset++) {
++        /* 逐步扩展参考值，覆盖每个长度而不重复执行整段逐位运算。 */
++        static const uint16_t seeds[] = {0, 1, 0x1021, 0x8000, 0xffff};
++        for (size_t s = 0; s < sizeof(seeds) / sizeof(seeds[0]); s++) {
++            uint16_t expected = seeds[s];
++            for (size_t len = 0; len <= 4096; len++) {
++                crc16CheckPaths(buf + offset, len, seeds[s], expected, offset);
++                expected = crc16Reference(expected, buf + offset + len, 1);
++            }
++        }
++        for (size_t i = 0; i < sizeof(large_lengths) / sizeof(large_lengths[0]); i++)
++            crc16CheckBuffer(buf + offset, large_lengths[i], offset);
++    }
++    memset(buf, 0, sizeof(buf));
++    crc16CheckBuffer(buf, 32769, 0);
++    memset(buf, 0xff, sizeof(buf));
++    crc16CheckBuffer(buf, 32769, 0);
++#ifdef __linux__
++    /* 两端保护页分别捕获越界前读和越界后读，包括零长度输入。 */
++    long page = sysconf(_SC_PAGESIZE);
++    if (page <= 0) return 1;
++    size_t span = ((32769 + (size_t)page - 1) / (size_t)page) * (size_t)page;
++    uint8_t *mapping = mmap(NULL, span + 2 * (size_t)page, PROT_NONE,
++                            MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
++    if (mapping == MAP_FAILED) { perror("mmap"); return 1; }
++    uint8_t *data = mapping + page;
++    if (mprotect(data, span, PROT_READ | PROT_WRITE)) { perror("mprotect"); return 1; }
++    memset(data, 0xa5, span);
++    for (size_t len = 0; len <= 4096; len++) {
++        crc16CheckBuffer(data, len, 0);
++        crc16CheckBuffer(data + span - len, len, 0);
++    }
++    for (size_t i = 0; i < sizeof(large_lengths) / sizeof(large_lengths[0]); i++) {
++        size_t len = large_lengths[i];
++        crc16CheckBuffer(data, len, 0);
++        crc16CheckBuffer(data + span - len, len, 0);
++    }
++    munmap(mapping, span + 2 * (size_t)page);
++#endif
++#ifdef CRC16_USE_OPTIMIZED
++    if (!crc16_has_optimized)
++        puts("SKIP: assembly paths (required CPU features unavailable)");
++#ifdef REDIS_CRC16_SVE
++    if (!crc16_use_sve_wide)
++        puts("SKIP: SVE path (required CPU features unavailable)");
++#endif
++#else
++    puts("SKIP: assembly paths (not built on this target)");
++#endif
++    puts("CRC16 correctness tests passed");
++    return 0;
++}
++#endif
+diff --git a/src/crc16_xmodem_dispatch.c b/src/crc16_xmodem_dispatch.c
+new file mode 100644
+index 0000000..b056e21
+--- /dev/null
++++ b/src/crc16_xmodem_dispatch.c
+@@ -0,0 +1,37 @@
++/**
++ * General-length CRC16/XMODEM selection behind the assembly public entry.
++ * Public entry preserves exact 16B/64B fast paths; 8..15B seed=0 uses a
++ * bounded-load polynomial path. Other inputs arrive here:
++ * <16B scalar, 16..127B short, 128..4095B 4-way, >=4096B wide.
++ * The short API delegates >=128B back to this selector, without recursion.
++ */
++
++#include <stdint.h>
++
++extern uint16_t crc16_xmodem_scalar(uint16_t seed, const uint8_t *buf, uint64_t len);
++extern uint16_t crc16_xmodem_pmull(uint16_t seed, const uint8_t *buf, uint64_t len);
++extern uint16_t crc16_xmodem_short(uint16_t seed, const uint8_t *buf, uint64_t len);
++extern uint16_t crc16_xmodem_pmull_8way(uint16_t seed, const uint8_t *buf, uint64_t len);
++extern uint16_t crc16_xmodem_pmull_8way_neon(uint16_t seed, const uint8_t *buf, uint64_t len);
++#ifdef REDIS_CRC16_SVE
++extern int crc16_use_sve_wide;
++#endif
++
++uint16_t crc16_xmodem_generic(uint16_t seed, const uint8_t *buf, uint64_t len)
++{
++    if (len >= 128) {
++        if (len >= 4096) {
++#ifdef REDIS_CRC16_SVE
++            /* The SVE kernel requires SVE2 + SVEPMULL and 256-bit VL.
++             * Other vector lengths fall back inside the assembly entry. */
++            if (len >= 16384 && crc16_use_sve_wide)
++                return crc16_xmodem_pmull_8way(seed, buf, len);
++#endif
++            return crc16_xmodem_pmull_8way_neon(seed, buf, len);
++        }
++        return crc16_xmodem_pmull(seed, buf, len);
++    }
++    if (len >= 16)
++        return crc16_xmodem_short(seed, buf, len);
++    return crc16_xmodem_scalar(seed, buf, len);
++}
+diff --git a/src/crc16_xmodem_pmull.S b/src/crc16_xmodem_pmull.S
+new file mode 100644
+index 0000000..11baa69
+--- /dev/null
++++ b/src/crc16_xmodem_pmull.S
+@@ -0,0 +1,140 @@
++/* General CRC16/XMODEM folding kernel. Arbitrary seed and byte length.
++ * Caller-saved SIMD registers only. Safe exact in-buffer loads.
++ * Reciprocal reduction and balanced polynomial merges. */
++#ifdef CRC16_USE_SHA3
++ .arch armv8.2-a+crc+crypto+sha3
++#else
++ .arch armv8-a+crc+crypto
++#endif
++ .text
++ .p2align 4
++ .global crc16_xmodem_pmull
++ .type crc16_xmodem_pmull, %function
++crc16_xmodem_pmull:
++ cmp x2, #128
++ b.lo crc16_xmodem
++.Lmain:
++ and x3, x2, #-64
++ sub x3, x3, #64
++ ldr q7, .Lmask
++ ld1 {v2.16b-v5.16b}, [x1], #64
++ tbl v2.16b, {v2.16b}, v7.16b
++ tbl v3.16b, {v3.16b}, v7.16b
++ tbl v4.16b, {v4.16b}, v7.16b
++ tbl v5.16b, {v5.16b}, v7.16b
++ cbz w0, .Lmain_seed_ready
++ lsl x0, x0, #48
++ fmov d16, xzr
++ ins v16.d[1], x0
++ eor v2.16b, v2.16b, v16.16b
++.Lmain_seed_ready:
++ cbz x3, .Lmain_post
++ ldr q17, .Lstride4
++ .p2align 4
++.Lmain_loop:
++ ld1 {v28.16b-v31.16b}, [x1], #64
++ prfm pldl2strm, [x1,#1024]
++ tbl v28.16b, {v28.16b}, v7.16b
++ tbl v29.16b, {v29.16b}, v7.16b
++ tbl v30.16b, {v30.16b}, v7.16b
++ tbl v31.16b, {v31.16b}, v7.16b
++ pmull2 v24.1q, v2.2d, v17.2d
++ pmull v2.1q, v2.1d, v17.1d
++#ifdef CRC16_USE_SHA3
++ eor3 v2.16b, v2.16b, v24.16b, v28.16b
++#else
++ eor v2.16b, v2.16b, v24.16b
++ eor v2.16b, v2.16b, v28.16b
++#endif
++ pmull2 v24.1q, v3.2d, v17.2d
++ pmull v3.1q, v3.1d, v17.1d
++#ifdef CRC16_USE_SHA3
++ eor3 v3.16b, v3.16b, v24.16b, v29.16b
++#else
++ eor v3.16b, v3.16b, v24.16b
++ eor v3.16b, v3.16b, v29.16b
++#endif
++ pmull2 v24.1q, v4.2d, v17.2d
++ pmull v4.1q, v4.1d, v17.1d
++#ifdef CRC16_USE_SHA3
++ eor3 v4.16b, v4.16b, v24.16b, v30.16b
++#else
++ eor v4.16b, v4.16b, v24.16b
++ eor v4.16b, v4.16b, v30.16b
++#endif
++ pmull2 v24.1q, v5.2d, v17.2d
++ pmull v5.1q, v5.1d, v17.1d
++#ifdef CRC16_USE_SHA3
++ eor3 v5.16b, v5.16b, v24.16b, v31.16b
++#else
++ eor v5.16b, v5.16b, v24.16b
++ eor v5.16b, v5.16b, v31.16b
++#endif
++ subs x3, x3, #64
++ b.ne .Lmain_loop
++.Lmain_post:
++ and x2, x2, #63
++ adr x6, .Ltree
++ ldp q16, q17, [x6]
++ pmull2 v6.1q, v2.2d, v17.2d
++ pmull2 v18.1q, v3.2d, v17.2d
++ pmull v2.1q, v2.1d, v17.1d
++ pmull v3.1q, v3.1d, v17.1d
++#ifdef CRC16_USE_SHA3
++ eor3 v4.16b, v2.16b, v6.16b, v4.16b
++#else
++ eor v4.16b, v4.16b, v2.16b
++ eor v4.16b, v4.16b, v6.16b
++#endif
++#ifdef CRC16_USE_SHA3
++ eor3 v5.16b, v3.16b, v18.16b, v5.16b
++#else
++ eor v5.16b, v5.16b, v3.16b
++ eor v5.16b, v5.16b, v18.16b
++#endif
++ pmull2 v6.1q, v4.2d, v16.2d
++ pmull v4.1q, v4.1d, v16.1d
++#ifdef CRC16_USE_SHA3
++ eor3 v5.16b, v4.16b, v6.16b, v5.16b
++#else
++ eor v5.16b, v5.16b, v4.16b
++ eor v5.16b, v5.16b, v6.16b
++#endif
++ mov v2.16b, v5.16b
++ b .Lreduce
++.Lreduce:
++ adr x6, .Lreciprocal
++ ldp q16, q17, [x6]
++ pmull2 v0.1q, v2.2d, v16.2d
++ pmull v1.1q, v2.1d, v16.1d
++ pmull2 v3.1q, v2.2d, v17.2d
++ eor v1.16b, v1.16b, v3.16b
++ ext v1.16b, v1.16b, v1.16b, #8
++#ifdef CRC16_USE_SHA3
++ eor3 v1.16b, v1.16b, v0.16b, v2.16b
++#else
++ eor v1.16b, v1.16b, v0.16b
++ eor v1.16b, v1.16b, v2.16b
++#endif
++ umov w4, v1.h[0]
++ eor w0, w4, w4, lsl #5
++ eor w0, w0, w4, lsl #12
++ uxth w0, w0
++ cbnz x2, crc16_xmodem
++ ret
++ .size crc16_xmodem_pmull, .-crc16_xmodem_pmull
++ .p2align 4
++.Lmask:
++ .byte 15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,0
++ .p2align 4
++.Ltree:
++ .quad 0x45630000,0xd5f60000
++ .quad 0xf0e60000,0xf44b0000
++ .quad 0x59b00000,0x60190000
++ .quad 0xb5b70000,0x18d30000
++.Lstride4:
++ .quad 0x59b00000,0x60190000
++.Lreciprocal:
++ .quad 0x11303471a041b343,0x11303471a041b343
++ .quad 0xe569d503417ca4a2,0xe569d503417ca4a2
++ .section .note.GNU-stack,"",%progbits
+diff --git a/src/crc16_xmodem_pmull_8way.S b/src/crc16_xmodem_pmull_8way.S
+new file mode 100644
+index 0000000..d01c626
+--- /dev/null
++++ b/src/crc16_xmodem_pmull_8way.S
+@@ -0,0 +1,409 @@
++#ifdef CRC16_USE_SVE
++ .arch armv8.5-a+crc+crypto+sha3+sve2+sve2-aes
++ .text
++ .p2align 4
++ .global crc16_xmodem_pmull_8way
++ .type crc16_xmodem_pmull_8way,%function
++crc16_xmodem_pmull_8way:
++ cmp x2,#128
++ b.lo crc16_xmodem
++ cmp x2,#16384
++ b.lo .Lmain
++ cntb x3
++ cmp x3,#32
++ b.ne .Lmain
++ ptrue p0.b
++ and x3,x2,#-256
++ sub x3,x3,#256
++ adr x6,.LSVE_mask
++ ld1b {z7.b},p0/z,[x6]
++ ld1b {z20.b},p0/z,[x1,#0,mul vl]
++ ld1b {z21.b},p0/z,[x1,#1,mul vl]
++ ld1b {z22.b},p0/z,[x1,#2,mul vl]
++ ld1b {z23.b},p0/z,[x1,#3,mul vl]
++ ld1b {z24.b},p0/z,[x1,#4,mul vl]
++ ld1b {z25.b},p0/z,[x1,#5,mul vl]
++ ld1b {z26.b},p0/z,[x1,#6,mul vl]
++ ld1b {z27.b},p0/z,[x1,#7,mul vl]
++ add x1,x1,#256
++ tbl z20.b,{z20.b},z7.b
++ tbl z21.b,{z21.b},z7.b
++ tbl z22.b,{z22.b},z7.b
++ tbl z23.b,{z23.b},z7.b
++ tbl z24.b,{z24.b},z7.b
++ tbl z25.b,{z25.b},z7.b
++ tbl z26.b,{z26.b},z7.b
++ tbl z27.b,{z27.b},z7.b
++ cbz w0,.LSVE_seed_ready
++ lsl x0,x0,#48
++ fmov d16,xzr
++ ins v16.d[1],x0
++ eor z20.d,z20.d,z16.d
++.LSVE_seed_ready:
++ cbz x3,.LSVE_post
++ adr x6,.LSVE_stride
++ ld1b {z17.b},p0/z,[x6]
++ .p2align 4
++.LSVE_loop:
++ ld1b {z28.b},p0/z,[x1,#0,mul vl]
++ ld1b {z29.b},p0/z,[x1,#1,mul vl]
++ ld1b {z30.b},p0/z,[x1,#2,mul vl]
++ ld1b {z31.b},p0/z,[x1,#3,mul vl]
++ ld1b {z0.b},p0/z,[x1,#4,mul vl]
++ ld1b {z1.b},p0/z,[x1,#5,mul vl]
++ ld1b {z2.b},p0/z,[x1,#6,mul vl]
++ ld1b {z3.b},p0/z,[x1,#7,mul vl]
++ add x1,x1,#256
++ prfm pldl2strm,[x1,#1024]
++ tbl z28.b,{z28.b},z7.b
++ tbl z29.b,{z29.b},z7.b
++ tbl z30.b,{z30.b},z7.b
++ tbl z31.b,{z31.b},z7.b
++ tbl z0.b,{z0.b},z7.b
++ tbl z1.b,{z1.b},z7.b
++ tbl z2.b,{z2.b},z7.b
++ tbl z3.b,{z3.b},z7.b
++ pmullt z4.q,z20.d,z17.d
++ pmullt z5.q,z21.d,z17.d
++ pmullt z6.q,z22.d,z17.d
++ pmullt z18.q,z23.d,z17.d
++ pmullb z20.q,z20.d,z17.d
++ pmullb z21.q,z21.d,z17.d
++ pmullb z22.q,z22.d,z17.d
++ pmullb z23.q,z23.d,z17.d
++ eor3 z20.d,z20.d,z4.d,z28.d
++ eor3 z21.d,z21.d,z5.d,z29.d
++ eor3 z22.d,z22.d,z6.d,z30.d
++ eor3 z23.d,z23.d,z18.d,z31.d
++ pmullt z4.q,z24.d,z17.d
++ pmullt z5.q,z25.d,z17.d
++ pmullt z6.q,z26.d,z17.d
++ pmullt z18.q,z27.d,z17.d
++ pmullb z24.q,z24.d,z17.d
++ pmullb z25.q,z25.d,z17.d
++ pmullb z26.q,z26.d,z17.d
++ pmullb z27.q,z27.d,z17.d
++ eor3 z24.d,z24.d,z4.d,z0.d
++ eor3 z25.d,z25.d,z5.d,z1.d
++ eor3 z26.d,z26.d,z6.d,z2.d
++ eor3 z27.d,z27.d,z18.d,z3.d
++ subs x3,x3,#256
++ b.ne .LSVE_loop
++.LSVE_post:
++ and x2,x2,#255
++ adr x6,.LSVE_merge
++ ld1b {z16.b},p0/z,[x6]
++ pmullt z0.q,z20.d,z16.d
++ pmullt z1.q,z21.d,z16.d
++ pmullt z2.q,z22.d,z16.d
++ pmullt z3.q,z23.d,z16.d
++ pmullb z20.q,z20.d,z16.d
++ pmullb z21.q,z21.d,z16.d
++ pmullb z22.q,z22.d,z16.d
++ pmullb z23.q,z23.d,z16.d
++ eor3 z24.d,z24.d,z20.d,z0.d
++ eor3 z25.d,z25.d,z21.d,z1.d
++ eor3 z26.d,z26.d,z22.d,z2.d
++ eor3 z27.d,z27.d,z23.d,z3.d
++ mov v0.16b,v24.16b
++ ext z24.b,z24.b,z24.b,#16
++ mov v1.16b,v24.16b
++ mov v2.16b,v25.16b
++ ext z25.b,z25.b,z25.b,#16
++ mov v3.16b,v25.16b
++ mov v4.16b,v26.16b
++ ext z26.b,z26.b,z26.b,#16
++ mov v5.16b,v26.16b
++ mov v6.16b,v27.16b
++ ext z27.b,z27.b,z27.b,#16
++ mov v7.16b,v27.16b
++ adr x6,.Ltree
++ ldp q16,q17,[x6]
++ ldr q18,[x6,#32]
++ pmull2 v20.1q, v0.2d, v18.2d
++ pmull2 v21.1q, v1.2d, v18.2d
++ pmull2 v22.1q, v2.2d, v18.2d
++ pmull2 v23.1q, v3.2d, v18.2d
++ pmull v0.1q, v0.1d, v18.1d
++ pmull v1.1q, v1.1d, v18.1d
++ pmull v2.1q, v2.1d, v18.1d
++ pmull v3.1q, v3.1d, v18.1d
++#ifdef CRC16_USE_SHA3
++ eor3 v4.16b, v0.16b, v20.16b, v4.16b
++#else
++ eor v4.16b, v4.16b, v0.16b
++ eor v4.16b, v4.16b, v20.16b
++#endif
++#ifdef CRC16_USE_SHA3
++ eor3 v5.16b, v1.16b, v21.16b, v5.16b
++#else
++ eor v5.16b, v5.16b, v1.16b
++ eor v5.16b, v5.16b, v21.16b
++#endif
++#ifdef CRC16_USE_SHA3
++ eor3 v6.16b, v2.16b, v22.16b, v6.16b
++#else
++ eor v6.16b, v6.16b, v2.16b
++ eor v6.16b, v6.16b, v22.16b
++#endif
++#ifdef CRC16_USE_SHA3
++ eor3 v7.16b, v3.16b, v23.16b, v7.16b
++#else
++ eor v7.16b, v7.16b, v3.16b
++ eor v7.16b, v7.16b, v23.16b
++#endif
++ pmull2 v20.1q, v4.2d, v17.2d
++ pmull2 v21.1q, v5.2d, v17.2d
++ pmull v4.1q, v4.1d, v17.1d
++ pmull v5.1q, v5.1d, v17.1d
++#ifdef CRC16_USE_SHA3
++ eor3 v6.16b, v4.16b, v20.16b, v6.16b
++#else
++ eor v6.16b, v6.16b, v4.16b
++ eor v6.16b, v6.16b, v20.16b
++#endif
++#ifdef CRC16_USE_SHA3
++ eor3 v7.16b, v5.16b, v21.16b, v7.16b
++#else
++ eor v7.16b, v7.16b, v5.16b
++ eor v7.16b, v7.16b, v21.16b
++#endif
++ pmull2 v20.1q, v6.2d, v16.2d
++ pmull v6.1q, v6.1d, v16.1d
++#ifdef CRC16_USE_SHA3
++ eor3 v7.16b, v6.16b, v20.16b, v7.16b
++#else
++ eor v7.16b, v7.16b, v6.16b
++ eor v7.16b, v7.16b, v20.16b
++#endif
++ mov v2.16b,v7.16b
++ b .Lreduce
++ .size crc16_xmodem_pmull_8way,.-crc16_xmodem_pmull_8way
++ .p2align 5
++.LSVE_mask:
++ .byte 15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,0,31,30,29,28,27,26,25,24,23,22,21,20,19,18,17,16
++.LSVE_stride:
++ .quad 0x16270000,0xcacd0000
++ .quad 0x16270000,0xcacd0000
++.LSVE_merge:
++ .quad 0xb5b70000,0x18d30000,0xb5b70000,0x18d30000
++#endif
++/* General CRC16/XMODEM folding kernel. Arbitrary seed and byte length.
++ * Caller-saved SIMD registers only. Safe exact in-buffer loads.
++ * Reciprocal reduction and balanced polynomial merges. */
++#ifdef CRC16_USE_SHA3
++ .arch armv8.2-a+crc+crypto+sha3
++#else
++ .arch armv8-a+crc+crypto
++#endif
++ .text
++ .p2align 4
++#ifndef CRC16_USE_SVE
++ .global crc16_xmodem_pmull_8way
++ .set crc16_xmodem_pmull_8way,crc16_xmodem_pmull_8way_neon
++#endif
++ .global crc16_xmodem_pmull_8way_neon
++ .type crc16_xmodem_pmull_8way_neon, %function
++crc16_xmodem_pmull_8way_neon:
++ cmp x2, #128
++ b.lo crc16_xmodem
++.Lmain:
++ and x3, x2, #-128
++ sub x3, x3, #128
++ ldr q7, .Lmask
++ ld1 {v20.16b-v23.16b}, [x1], #64
++ ld1 {v24.16b-v27.16b}, [x1], #64
++ tbl v20.16b, {v20.16b}, v7.16b
++ tbl v21.16b, {v21.16b}, v7.16b
++ tbl v22.16b, {v22.16b}, v7.16b
++ tbl v23.16b, {v23.16b}, v7.16b
++ tbl v24.16b, {v24.16b}, v7.16b
++ tbl v25.16b, {v25.16b}, v7.16b
++ tbl v26.16b, {v26.16b}, v7.16b
++ tbl v27.16b, {v27.16b}, v7.16b
++ cbz w0, .Lmain_seed_ready
++ lsl x0, x0, #48
++ fmov d16, xzr
++ ins v16.d[1], x0
++ eor v20.16b, v20.16b, v16.16b
++.Lmain_seed_ready:
++ cbz x3, .Lmain_post
++ ldr q17, .Lstride8
++ .p2align 4
++.Lmain_loop:
++ ld1 {v28.16b-v31.16b}, [x1], #64
++ ld1 {v0.16b-v3.16b}, [x1], #64
++ prfm pldl2strm, [x1,#1024]
++ tbl v28.16b, {v28.16b}, v7.16b
++ tbl v29.16b, {v29.16b}, v7.16b
++ tbl v30.16b, {v30.16b}, v7.16b
++ tbl v31.16b, {v31.16b}, v7.16b
++ tbl v0.16b, {v0.16b}, v7.16b
++ tbl v1.16b, {v1.16b}, v7.16b
++ tbl v2.16b, {v2.16b}, v7.16b
++ tbl v3.16b, {v3.16b}, v7.16b
++ pmull2 v4.1q, v20.2d, v17.2d
++ pmull v20.1q, v20.1d, v17.1d
++#ifdef CRC16_USE_SHA3
++ eor3 v20.16b, v20.16b, v4.16b, v28.16b
++#else
++ eor v20.16b, v20.16b, v4.16b
++ eor v20.16b, v20.16b, v28.16b
++#endif
++ pmull2 v4.1q, v21.2d, v17.2d
++ pmull v21.1q, v21.1d, v17.1d
++#ifdef CRC16_USE_SHA3
++ eor3 v21.16b, v21.16b, v4.16b, v29.16b
++#else
++ eor v21.16b, v21.16b, v4.16b
++ eor v21.16b, v21.16b, v29.16b
++#endif
++ pmull2 v4.1q, v22.2d, v17.2d
++ pmull v22.1q, v22.1d, v17.1d
++#ifdef CRC16_USE_SHA3
++ eor3 v22.16b, v22.16b, v4.16b, v30.16b
++#else
++ eor v22.16b, v22.16b, v4.16b
++ eor v22.16b, v22.16b, v30.16b
++#endif
++ pmull2 v4.1q, v23.2d, v17.2d
++ pmull v23.1q, v23.1d, v17.1d
++#ifdef CRC16_USE_SHA3
++ eor3 v23.16b, v23.16b, v4.16b, v31.16b
++#else
++ eor v23.16b, v23.16b, v4.16b
++ eor v23.16b, v23.16b, v31.16b
++#endif
++ pmull2 v4.1q, v24.2d, v17.2d
++ pmull v24.1q, v24.1d, v17.1d
++#ifdef CRC16_USE_SHA3
++ eor3 v24.16b, v24.16b, v4.16b, v0.16b
++#else
++ eor v24.16b, v24.16b, v4.16b
++ eor v24.16b, v24.16b, v0.16b
++#endif
++ pmull2 v4.1q, v25.2d, v17.2d
++ pmull v25.1q, v25.1d, v17.1d
++#ifdef CRC16_USE_SHA3
++ eor3 v25.16b, v25.16b, v4.16b, v1.16b
++#else
++ eor v25.16b, v25.16b, v4.16b
++ eor v25.16b, v25.16b, v1.16b
++#endif
++ pmull2 v4.1q, v26.2d, v17.2d
++ pmull v26.1q, v26.1d, v17.1d
++#ifdef CRC16_USE_SHA3
++ eor3 v26.16b, v26.16b, v4.16b, v2.16b
++#else
++ eor v26.16b, v26.16b, v4.16b
++ eor v26.16b, v26.16b, v2.16b
++#endif
++ pmull2 v4.1q, v27.2d, v17.2d
++ pmull v27.1q, v27.1d, v17.1d
++#ifdef CRC16_USE_SHA3
++ eor3 v27.16b, v27.16b, v4.16b, v3.16b
++#else
++ eor v27.16b, v27.16b, v4.16b
++ eor v27.16b, v27.16b, v3.16b
++#endif
++ subs x3, x3, #128
++ b.ne .Lmain_loop
++.Lmain_post:
++ and x2, x2, #127
++ adr x6, .Ltree
++ ldp q16, q17, [x6]
++ ldr q18, [x6,#32]
++ pmull2 v4.1q, v20.2d, v18.2d
++ pmull2 v5.1q, v21.2d, v18.2d
++ pmull2 v6.1q, v22.2d, v18.2d
++ pmull2 v19.1q, v23.2d, v18.2d
++ pmull v20.1q, v20.1d, v18.1d
++ pmull v21.1q, v21.1d, v18.1d
++ pmull v22.1q, v22.1d, v18.1d
++ pmull v23.1q, v23.1d, v18.1d
++#ifdef CRC16_USE_SHA3
++ eor3 v24.16b, v20.16b, v4.16b, v24.16b
++#else
++ eor v24.16b, v24.16b, v20.16b
++ eor v24.16b, v24.16b, v4.16b
++#endif
++#ifdef CRC16_USE_SHA3
++ eor3 v25.16b, v21.16b, v5.16b, v25.16b
++#else
++ eor v25.16b, v25.16b, v21.16b
++ eor v25.16b, v25.16b, v5.16b
++#endif
++#ifdef CRC16_USE_SHA3
++ eor3 v26.16b, v22.16b, v6.16b, v26.16b
++#else
++ eor v26.16b, v26.16b, v22.16b
++ eor v26.16b, v26.16b, v6.16b
++#endif
++#ifdef CRC16_USE_SHA3
++ eor3 v27.16b, v23.16b, v19.16b, v27.16b
++#else
++ eor v27.16b, v27.16b, v23.16b
++ eor v27.16b, v27.16b, v19.16b
++#endif
++ pmull2 v4.1q, v24.2d, v17.2d
++ pmull2 v5.1q, v25.2d, v17.2d
++ pmull v24.1q, v24.1d, v17.1d
++ pmull v25.1q, v25.1d, v17.1d
++#ifdef CRC16_USE_SHA3
++ eor3 v26.16b, v24.16b, v4.16b, v26.16b
++#else
++ eor v26.16b, v26.16b, v24.16b
++ eor v26.16b, v26.16b, v4.16b
++#endif
++#ifdef CRC16_USE_SHA3
++ eor3 v27.16b, v25.16b, v5.16b, v27.16b
++#else
++ eor v27.16b, v27.16b, v25.16b
++ eor v27.16b, v27.16b, v5.16b
++#endif
++ pmull2 v4.1q, v26.2d, v16.2d
++ pmull v26.1q, v26.1d, v16.1d
++#ifdef CRC16_USE_SHA3
++ eor3 v27.16b, v26.16b, v4.16b, v27.16b
++#else
++ eor v27.16b, v27.16b, v26.16b
++ eor v27.16b, v27.16b, v4.16b
++#endif
++ mov v2.16b, v27.16b
++ b .Lreduce
++.Lreduce:
++ adr x6, .Lreciprocal
++ ldp q16, q17, [x6]
++ pmull2 v0.1q, v2.2d, v16.2d
++ pmull v1.1q, v2.1d, v16.1d
++ pmull2 v3.1q, v2.2d, v17.2d
++ eor v1.16b, v1.16b, v3.16b
++ ext v1.16b, v1.16b, v1.16b, #8
++#ifdef CRC16_USE_SHA3
++ eor3 v1.16b, v1.16b, v0.16b, v2.16b
++#else
++ eor v1.16b, v1.16b, v0.16b
++ eor v1.16b, v1.16b, v2.16b
++#endif
++ umov w4, v1.h[0]
++ eor w0, w4, w4, lsl #5
++ eor w0, w0, w4, lsl #12
++ uxth w0, w0
++ cbnz x2, crc16_xmodem
++ ret
++ .size crc16_xmodem_pmull_8way_neon, .-crc16_xmodem_pmull_8way_neon
++ .p2align 4
++.Lmask:
++ .byte 15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,0
++ .p2align 4
++.Ltree:
++ .quad 0x45630000,0xd5f60000
++ .quad 0xf0e60000,0xf44b0000
++ .quad 0x59b00000,0x60190000
++ .quad 0xb5b70000,0x18d30000
++.Lstride8:
++ .quad 0xb5b70000,0x18d30000
++.Lreciprocal:
++ .quad 0x11303471a041b343,0x11303471a041b343
++ .quad 0xe569d503417ca4a2,0xe569d503417ca4a2
++ .section .note.GNU-stack,"",%progbits
+diff --git a/src/crc16_xmodem_short.S b/src/crc16_xmodem_short.S
+new file mode 100644
+index 0000000..5ad5f1c
+--- /dev/null
++++ b/src/crc16_xmodem_short.S
+@@ -0,0 +1,342 @@
++/////////////////////////////////////////////////////////////////////////
++// XMODEM CRC16 — Short buffer NEON/PMULL path with scalable long-input delegation
++//
++// Folds whole 16-byte blocks with the x^128 constant, then handles a trailing
++// partial block of r bytes by folding the state by x^(8r) and adding the r bytes
++// (big-endian, at the bottom of the block).  This is the correct continuation;
++// zero-padding the block and folding by x^128 is not.
++//
++// Precondition: len >= 16 (the dispatcher routes len < 16 to the table path).
++//
++// uint16_t crc16_xmodem_short(uint16_t seed, const uint8_t *buf, uint64_t len);
++/////////////////////////////////////////////////////////////////////////
++
++#ifdef CRC16_USE_SHA3
++ .arch armv8.2-a+crc+crypto+sha3
++#else
++	.arch armv8-a+crc+crypto
++#endif
++	.text
++ .p2align 6
++	.align	3
++	.global	crc16_xmodem_short
++#ifndef __APPLE__
++	.type	crc16_xmodem_short, %function
++#endif
++
++crc16_xmodem_short:
++	/* Scale seed to 32-bit domain: seed << 48 in the high d-lane.
++	   lsl #48 discards bits 16..63, so no explicit uxth is needed. */
++	lsl	x0, x0, 48
++	fmov	d16, xzr
++	ins	v16.d[1], x0
++
++	/* Load byte-reverse shuffle mask (PC-relative) */
++	ldr	q7, shuffle_mask_short
++
++	/* First 16B block: byte-reverse and XOR in the seed */
++	ld1	{v28.16b}, [x1], #16
++	sub	x2, x2, #16
++	tbl	v28.16b, {v28.16b}, v7.16b
++	eor	v2.16b, v16.16b, v28.16b
++	cbz	x2, .crc_short_reduce
++ cmp x2, #112
++ b.hs .overall_short_long
++
++	ldr	q17, fold_constant_p1
++
++	/* Remaining 16B blocks: fold state by x^128, XOR in new data */
++	.align 2
++.crc_short_loop:
++	cmp	x2, #16
++	b.lo	.crc_short_partial
++	ld1	{v28.16b}, [x1], #16
++	sub	x2, x2, #16
++	tbl	v28.16b, {v28.16b}, v7.16b
++	pmull2	v24.1q, v2.2d, v17.2d
++	pmull	v2.1q,  v2.1d, v17.1d
++	eor	v2.16b, v24.16b, v2.16b
++	eor	v2.16b, v2.16b,  v28.16b
++	cbnz	x2, .crc_short_loop
++	b	.crc_short_reduce
++
++	/* Trailing 1..15 bytes: fold state by x^(8r) and add T_bot (the r bytes
++	   big-endian at the block bottom).  The last 16 bytes are loaded
++	   directly (safe: the dispatcher only enters with len >= 16) and a
++	   single TBL selects/positions them, masking the already-folded prefix
++	   bytes above. */
++.crc_short_partial:
++	add	x4, x1, x2		/* x4 = buffer end */
++	ldr	q28, [x4, #-16]
++	movi	v29.16b, 0
++	adr	x6, crc_short_tail_idx
++	ldr	q16, [x6, x2, lsl #4]
++	tbl	v28.16b, {v28.16b, v29.16b}, v16.16b	/* -> T_bot */
++
++	adr	x6, crc_short_partial_consts
++	ldr	q17, [x6, x2, lsl #4]
++	pmull2	v24.1q, v2.2d, v17.2d
++	pmull	v2.1q,  v2.1d, v17.1d
++	eor	v2.16b, v24.16b, v2.16b
++	eor	v2.16b, v2.16b,  v28.16b
++
++/* ================================================================= */
++/* P0 fold + Barrett reduction                                       */
++/* ================================================================= */
++.crc_short_reduce:
++
++ /* K=floor(x^144/P)=x^128+KH*x^64+KL.
++  * For A=H*x^64+L, low16(floor(A*x^16/P)) is
++  * low16(L + H*KH + ((L*KH + H*KL)>>64)).
++  * The CRC is low16(q*(1+x^5+x^12)). Products are carry-less.
++  */
++ adr x6, reciprocal128_constants
++ ldp q16, q17, [x6]
++ pmull2 v0.1q, v2.2d, v16.2d
++ pmull v1.1q, v2.1d, v16.1d
++ pmull2 v3.1q, v2.2d, v17.2d
++ eor v1.16b, v1.16b, v3.16b
++ ext v1.16b, v1.16b, v1.16b, #8
++#ifdef CRC16_USE_SHA3
++ eor3 v1.16b, v1.16b, v0.16b, v2.16b
++#else
++ eor v1.16b, v1.16b, v0.16b
++ eor v1.16b, v1.16b, v2.16b
++#endif
++
++ umov w4, v1.h[0]
++ eor w0, w4, w4, lsl #5
++ eor w0, w0, w4, lsl #12
++ uxth w0, w0
++ ret
++
++#ifndef __APPLE__
++	.size	crc16_xmodem_short, .-crc16_xmodem_short
++#endif
++
++/* ================================================================= */
++/* Constants                                                         */
++/* ================================================================= */
++	.align	4
++fold_constant_p1:
++	.word	0x45630000	/* P1_lo = x^128 mod P_scaled */
++	.word	0x00000000
++	.word	0xD5F60000	/* P1_hi = x^192 mod P_scaled */
++	.word	0x00000000
++
++	.align	4
++shuffle_mask_short:
++	.byte	15, 14, 13, 12, 11, 10, 9, 8
++	.byte	7,   6,  5,  4,  3,  2, 1, 0
++	.align	4
++.shuffle_mask_lanchor_short = shuffle_mask_short
++
++	/* TBL index vectors for the trailing partial block, indexed by r (1..15):
++	   byte k <- 15-k for k<r (reversed residual), else 16 (zero register). */
++	.align	4
++crc_short_tail_idx:
++	.byte	16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16
++	.byte	15, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16
++	.byte	15, 14, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16
++	.byte	15, 14, 13, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16
++	.byte	15, 14, 13, 12, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16
++	.byte	15, 14, 13, 12, 11, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16
++	.byte	15, 14, 13, 12, 11, 10, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16
++	.byte	15, 14, 13, 12, 11, 10,  9, 16, 16, 16, 16, 16, 16, 16, 16, 16
++	.byte	15, 14, 13, 12, 11, 10,  9,  8, 16, 16, 16, 16, 16, 16, 16, 16
++	.byte	15, 14, 13, 12, 11, 10,  9,  8,  7, 16, 16, 16, 16, 16, 16, 16
++	.byte	15, 14, 13, 12, 11, 10,  9,  8,  7,  6, 16, 16, 16, 16, 16, 16
++	.byte	15, 14, 13, 12, 11, 10,  9,  8,  7,  6,  5, 16, 16, 16, 16, 16
++	.byte	15, 14, 13, 12, 11, 10,  9,  8,  7,  6,  5,  4, 16, 16, 16, 16
++	.byte	15, 14, 13, 12, 11, 10,  9,  8,  7,  6,  5,  4,  3, 16, 16, 16
++	.byte	15, 14, 13, 12, 11, 10,  9,  8,  7,  6,  5,  4,  3,  2, 16, 16
++	.byte	15, 14, 13, 12, 11, 10,  9,  8,  7,  6,  5,  4,  3,  2,  1, 16
++
++	/* Partial-block fold constants, indexed by r = len % 16 (1..15):
++	   entry r = { x^(8r) mod P_scaled, x^(8r+64) mod P_scaled }. */
++	.align	4
++crc_short_partial_consts:
++	.quad	0x0000000000000000	/* r=0 (unused) */
++	.quad	0x0000000000000000
++	.quad	0x0000000000000100	/* r=1  */
++	.quad	0x0000000045A00000
++	.quad	0x0000000000010000	/* r=2  */
++	.quad	0x00000000B8610000
++	.quad	0x0000000001000000	/* r=3  */
++	.quad	0x0000000047D30000
++	.quad	0x0000000010210000	/* r=4  */
++	.quad	0x00000000EB230000
++	.quad	0x0000000033310000	/* r=5  */
++	.quad	0x000000006F450000
++	.quad	0x0000000037300000	/* r=6  */
++	.quad	0x00000000D8490000
++	.quad	0x0000000076B40000	/* r=7  */
++	.quad	0x0000000003750000
++	.quad	0x00000000AA510000	/* r=8  */
++	.quad	0x0000000045630000
++	.quad	0x0000000045A00000	/* r=9  */
++	.quad	0x000000007B610000
++	.quad	0x00000000B8610000	/* r=10 */
++	.quad	0x00000000AEFC0000
++	.quad	0x0000000047D30000	/* r=11 */
++	.quad	0x00000000A8240000
++	.quad	0x00000000EB230000	/* r=12 */
++	.quad	0x0000000010E20000
++	.quad	0x000000006F450000	/* r=13 */
++	.quad	0x00000000F0310000
++	.quad	0x00000000D8490000	/* r=14 */
++	.quad	0x00000000DE1F0000
++	.quad	0x0000000003750000	/* r=15 */
++	.quad	0x0000000035B30000
++
++
++/* Public dispatcher: keep exact 16B input on a short inline entry path.
++ * No seed/data assumptions; other lengths retain the generic dispatcher.
++ */
++ .align 4
++ .global crc16_xmodem
++ .type crc16_xmodem, %function
++ .p2align 4
++crc16_xmodem:
++ cmp x2, #16
++ b.ne .dispatch_other_length
++ cbnz w0, crc16_xmodem_short
++ ldr q7, shuffle_mask_short
++ ldr q2, [x1]
++ tbl v2.16b, {v2.16b}, v7.16b
++
++ /* K=floor(x^144/P)=x^128+KH*x^64+KL.
++  * For A=H*x^64+L, low16(floor(A*x^16/P)) is
++  * low16(L + H*KH + ((L*KH + H*KL)>>64)).
++  * The CRC is low16(q*(1+x^5+x^12)). Products are carry-less.
++  */
++ adr x6, reciprocal128_constants
++ ldp q16, q17, [x6]
++ pmull2 v0.1q, v2.2d, v16.2d
++ pmull v1.1q, v2.1d, v16.1d
++ pmull2 v3.1q, v2.2d, v17.2d
++ eor v1.16b, v1.16b, v3.16b
++ ext v1.16b, v1.16b, v1.16b, #8
++#ifdef CRC16_USE_SHA3
++ eor3 v1.16b, v1.16b, v0.16b, v2.16b
++#else
++ eor v1.16b, v1.16b, v0.16b
++ eor v1.16b, v1.16b, v2.16b
++#endif
++
++ umov w4, v1.h[0]
++ eor w0, w4, w4, lsl #5
++ eor w0, w0, w4, lsl #12
++ uxth w0, w0
++ ret
++.dispatch_other_length:
++ cmp x2, #64
++ b.ne .overall_tiny_router
++ ldr q7, shuffle_mask_short
++ ld1 {v0.16b-v3.16b}, [x1]
++ tbl v0.16b, {v0.16b}, v7.16b
++ tbl v1.16b, {v1.16b}, v7.16b
++ tbl v2.16b, {v2.16b}, v7.16b
++ tbl v3.16b, {v3.16b}, v7.16b
++ cbz w0, .inline_all64_seed_ready
++ lsl x0, x0, #48
++ fmov d31, xzr
++ ins v31.d[1], x0
++ eor v0.16b, v0.16b, v31.16b
++.inline_all64_seed_ready:
++ adr x6, deep_fold_constants
++ ldp q16, q17, [x6]
++ pmull2 v4.1q, v0.2d, v17.2d
++ pmull v0.1q, v0.1d, v17.1d
++ pmull2 v5.1q, v1.2d, v17.2d
++ pmull v1.1q, v1.1d, v17.1d
++#ifdef CRC16_USE_SHA3
++ eor3 v0.16b, v0.16b, v4.16b, v2.16b
++#else
++ eor v0.16b, v0.16b, v4.16b
++ eor v0.16b, v0.16b, v2.16b
++#endif
++#ifdef CRC16_USE_SHA3
++ eor3 v1.16b, v1.16b, v5.16b, v3.16b
++#else
++ eor v1.16b, v1.16b, v5.16b
++ eor v1.16b, v1.16b, v3.16b
++#endif
++
++ pmull2 v6.1q, v0.2d, v16.2d
++ pmull v0.1q, v0.1d, v16.1d
++#ifdef CRC16_USE_SHA3
++ eor3 v2.16b, v0.16b, v6.16b, v1.16b
++#else
++ eor v2.16b, v0.16b, v6.16b
++ eor v2.16b, v2.16b, v1.16b
++#endif
++
++
++ /* K=floor(x^144/P)=x^128+KH*x^64+KL.
++  * For A=H*x^64+L, low16(floor(A*x^16/P)) is
++  * low16(L + H*KH + ((L*KH + H*KL)>>64)).
++  * The CRC is low16(q*(1+x^5+x^12)). Products are carry-less.
++  */
++ adr x6, reciprocal128_constants
++ ldp q16, q17, [x6]
++ pmull2 v0.1q, v2.2d, v16.2d
++ pmull v1.1q, v2.1d, v16.1d
++ pmull2 v3.1q, v2.2d, v17.2d
++ eor v1.16b, v1.16b, v3.16b
++ ext v1.16b, v1.16b, v1.16b, #8
++#ifdef CRC16_USE_SHA3
++ eor3 v1.16b, v1.16b, v0.16b, v2.16b
++#else
++ eor v1.16b, v1.16b, v0.16b
++ eor v1.16b, v1.16b, v2.16b
++#endif
++
++ umov w4, v1.h[0]
++ eor w0, w4, w4, lsl #5
++ eor w0, w0, w4, lsl #12
++ uxth w0, w0
++ ret
++
++ .size crc16_xmodem, .-crc16_xmodem
++
++
++
++.overall_short_long:
++ lsr x0, x0, #48
++ sub x1, x1, #16
++ add x2, x2, #16
++ b crc16_xmodem_generic
++.overall_tiny_router:
++ /* 8..15 bytes, seed=0: two overlapping 8-byte loads stay in bounds.
++  * Construct the exact big-endian polynomial in v2, without zero-padding
++  * the logical message. Other lengths/seeds retain the generic fallback. */
++ sub x3, x2, #8
++ cmp x3, #7
++ b.hi crc16_xmodem_generic
++ cbnz w0, crc16_xmodem_generic
++ ldr x3, [x1]
++ add x4, x1, x2
++ ldr x5, [x4,#-8]
++ rev x3, x3
++ rev x5, x5
++ mov x4, #16
++ sub x4, x4, x2
++ lsl x4, x4, #3
++ lsr x3, x3, x4
++ cmp x2, #8
++ csel x3, xzr, x3, eq
++ fmov d2, x5
++ ins v2.d[1], x3
++ b .crc_short_reduce
++ .p2align 4
++reciprocal128_constants:
++ .quad 0x11303471a041b343,0x11303471a041b343
++ .quad 0xe569d503417ca4a2,0xe569d503417ca4a2
++ .quad 0x1021
++
++ .p2align 6
++deep_fold_constants:
++ .quad 0x45630000,0xd5f60000,0xf0e60000,0xf44b0000
++
++ .section .note.GNU-stack,"",%progbits
+-- 
+2.54.0.windows.1
+
