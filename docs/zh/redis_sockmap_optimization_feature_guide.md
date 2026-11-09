@@ -1,5 +1,7 @@
 # Redis sockmap优化 特性指南
 
+本文档介绍Redis sockmap优化特性，通过BPF程序在socket层重定向数据包、绕过TCP/IP协议栈以提升Redis访问性能，并给出openEuler操作系统上安装使能该特性及性能测试的步骤，适用于需要提升Redis访问性能的用户。
+
 ## 特性描述<a name="ZH-CN_TOPIC_0000002542599151"></a>
 
 ### 简介<a name="ZH-CN_TOPIC_0000002511119610"></a>
@@ -24,8 +26,9 @@ Redis sockmap优化特性通过将参与通信的socket对象存入BPF map（soc
 
 具体实现原理如[**图 1** sockmap原理图](#sockmap原理图)所示。
 
-**图 1** sockmap原理图<a name="fig19692067534"></a><a id="sockmap原理图"></a><br>
-![](figures/sockmap原理图.png "sockmap原理图")
+**图 1** sockmap原理图<a name="fig19692067534"></a><a id="sockmap原理图"></a>
+
+![sockmap原理示意图，应用写请求由BPF程序在socket层直接重定向到目标socket，绕过TCP/IP协议栈实现零拷贝转发](figures/sockmap原理图.png "sockmap原理图")
 
 ### 约束与限制<a name="ZH-CN_TOPIC_0000002543634373"></a>
 
@@ -48,8 +51,8 @@ Redis sockmap优化特性通过将参与通信的socket对象存入BPF map（soc
 
 |项目|版本|版本|
 |--|--|--|
-|OS|openEuler 22.03 LTS SP4：[获取链接](https://repo.huaweicloud.com/openeuler/openEuler-22.03-LTS-SP4/ISO/aarch64/openEuler-22.03-LTS-SP4-everything-aarch64-dvd.iso)|openEuler 24.03 LTS SP3：[获取链接](https://repo.huaweicloud.com/openeuler/openEuler-24.03-LTS-SP3/ISO/aarch64/openEuler-24.03-LTS-SP3-everything-aarch64-dvd.iso)|
-|对应内核|kernel-5.10.0-216.0.0.115.oe2203sp4：[获取链接](https://repo.openeuler.org/openEuler-22.03-LTS-SP4/source/Packages/kernel-5.10.0-216.0.0.115.oe2203sp4.src.rpm)|kernel-6.6.0-132.0.0.111.oe2403sp3：[获取链接](https://dl-cdn.openeuler.openatom.cn/openEuler-24.03-LTS-SP3/source/Packages/kernel-6.6.0-132.0.0.111.oe2403sp3.src.rpm)|
+|OS|openEuler 22.03 LTS SP4：[下载openEuler-22.03-LTS-SP4-everything-aarch64-dvd.iso](https://repo.huaweicloud.com/openeuler/openEuler-22.03-LTS-SP4/ISO/aarch64/openEuler-22.03-LTS-SP4-everything-aarch64-dvd.iso)|openEuler 24.03 LTS SP3：[下载openEuler-24.03-LTS-SP3-everything-aarch64-dvd.iso](https://repo.huaweicloud.com/openeuler/openEuler-24.03-LTS-SP3/ISO/aarch64/openEuler-24.03-LTS-SP3-everything-aarch64-dvd.iso)|
+|对应内核|kernel-5.10.0-216.0.0.115.oe2203sp4：[下载kernel-5.10.0-216.0.0.115.oe2203sp4.src.rpm](https://repo.openeuler.org/openEuler-22.03-LTS-SP4/source/Packages/kernel-5.10.0-216.0.0.115.oe2203sp4.src.rpm)|kernel-6.6.0-132.0.0.111.oe2403sp3：[下载kernel-6.6.0-132.0.0.111.oe2403sp3.src.rpm](https://dl-cdn.openeuler.openatom.cn/openEuler-24.03-LTS-SP3/source/Packages/kernel-6.6.0-132.0.0.111.oe2403sp3.src.rpm)|
 
 ## 安装和使能特性<a name="ZH-CN_TOPIC_0000002542739059"></a>
 
@@ -126,7 +129,7 @@ Redis sockmap优化特性通过将参与通信的socket对象存入BPF map（soc
     make
     ```
 
-    ![](figures/zh-cn_image_0000002511150006.png)
+    ![步骤8编译netacc时执行make命令的终端回显，显示编译过程与编译完成信息](figures/zh-cn_image_0000002511150006.png)
 
 9. 挂载cgroup2，用于sockmap的资源管理。
 
@@ -142,18 +145,19 @@ Redis sockmap优化特性通过将参与通信的socket对象存入BPF map（soc
     ./netacc enable /mnt/cgroup2/
     ```
 
-11. 使用bpftool确认sockmap特性是否使能成功，回显信息中包含名为netaccsock\_map的相关内容表示启用成功。
+11. 使用bpftool确认sockmap特性是否使能成功，回显信息中包含名为netaccsock_map的相关内容表示启用成功。
 
     ```shell
     bpftool map show
     ```
 
-    ![](figures/zh-cn_image_0000002542631005.png)
+    ![步骤11执行bpftool map show的终端回显，可见名为netaccsock_map的map条目表示特性使能成功](figures/zh-cn_image_0000002542631005.png)
 
 12. （可选）通过redis-benchmark测试可以得到使能本特性前后的性能提升效果，详细测试步骤请参见《[redis-benchmark测试指导](https://www.hikunpeng.com/document/detail/zh/kunpengdbs/testguide/tstg/kunpengredis-benchmark_02_0001.html)》。sockmap优化特性可以使redis-benchmark 2U8G规格下非pipeline场景综合性能（SET、GET）提升5%以上，优化前后对比效果如[**图 2** sockmap优化特性优化前后性能对比](#sockmap优化特性优化前后性能对比)所示。
 
-    **图 2** sockmap优化特性优化前后性能对比<a name="fig1425555114118"></a><a id="sockmap优化特性优化前后性能对比"></a><br>
-    ![](figures/sockmap优化特性优化前后性能对比.png "sockmap优化特性优化前后性能对比")
+    **图 2** sockmap优化特性优化前后性能对比<a name="fig1425555114118"></a><a id="sockmap优化特性优化前后性能对比"></a>
+
+    ![使能sockmap优化特性前后redis-benchmark综合性能（SET、GET）的柱状对比，使能后柱明显更高、性能明显提升](figures/sockmap优化特性优化前后性能对比.png "sockmap优化特性优化前后性能对比")
 
 13. （可选）可执行以下命令禁用sockmap优化特性。
 
@@ -170,10 +174,10 @@ ASLR（Address Space Layout Randomization，地址空间布局随机化）是一
 echo 2 >/proc/sys/kernel/randomize_va_space
 ```
 
-![](figures/zh-cn_image_0000002504021297.png)
+![ASLR安全加固操作截图：在命令行执行echo命令向randomize_va_space写入2以启用地址空间布局随机化](figures/zh-cn_image_0000002504021297.png)
 
 ## 修订记录<a name="ZH-CN_TOPIC_0000002511328140"></a>
 
-|发布日期|修订记录|
-|--|--|
-|2026-03-30|第一次正式发布。|
+|文档版本| 发布日期   | 修改说明         |
+|----------| ---------- | ---------------- |
+|01| 2026-03-30 | 第一次正式发布。 |

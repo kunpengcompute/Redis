@@ -1,5 +1,7 @@
 # Redis 7.0.15 浮点类型加速 特性指南
 
+本文档介绍Redis 7.0.15浮点类型加速特性，将浮点数打印从glibc自带算法切换到grisu2算法以提升打印性能，适用于基于鲲鹏920新型号处理器、鲲鹏950处理器部署Redis 7.0.15的场景。
+
 ## 特性描述
 
 ### 简介
@@ -244,7 +246,7 @@ ASLR（Address Space Layout Randomization，地址空间布局随机化）是一
 echo 2 >/proc/sys/kernel/randomize_va_space
 ```
 
-![](figures/zh-cn_image_0000002504021297.png)
+![ASLR安全加固操作截图：在命令行执行echo命令向randomize_va_space写入2以启用地址空间布局随机化](figures/zh-cn_image_0000002504021297.png)
 
 ## 修订记录
 
