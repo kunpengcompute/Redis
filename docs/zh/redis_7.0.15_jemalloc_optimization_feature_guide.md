@@ -1,5 +1,7 @@
 # Redis jemalloc内存库加速 特性指南
 
+本文档介绍Redis jemalloc内存库加速特性，说明在鲲鹏920新型号处理器和鲲鹏950处理器上使能基于ARM平台TBI特性的jemalloc优化及其性能测试方法，适用于在openEuler上部署Redis 7.0.15的用户。
+
 ## 特性描述
 
 ### 简介
@@ -97,6 +99,10 @@ ARM平台的Top Byte Ignore（TBI）特性允许CPU在虚拟地址翻译时忽�
    patch -p1 < 0002-adapt-jemalloc-arm64-pointer-tag-and-gc.patch
    ```
 
+   > ![](public\_sys-resources/icon-note.gif) **说明：**
+   > 
+   > 请根据实际路径替换path/redis-7.0.15。
+   
 4. 重新编译redis 7.0.15。
 
    ```bash
@@ -104,6 +110,10 @@ ARM平台的Top Byte Ignore（TBI）特性允许CPU在虚拟地址翻译时忽�
    make distclean
    make -j
    ```
+   
+   > ![](public\_sys-resources/icon-note.gif) **说明：**
+   > 
+   > 请根据实际路径替换path/redis-7.0.15。
 
 5. 下载memtier_benchmark 2.1.4 源码并编译。
 
@@ -167,7 +177,7 @@ ASLR（Address Space Layout Randomization，地址空间布局随机化）是一
 echo 2 >/proc/sys/kernel/randomize_va_space
 ```
 
-![](figures/zh-cn_image_0000002504021297.png)
+![ASLR安全加固操作截图：在命令行执行echo命令向randomize_va_space写入2以启用地址空间布局随机化](figures/zh-cn_image_0000002504021297.png)
 
 ## 修订记录
 
