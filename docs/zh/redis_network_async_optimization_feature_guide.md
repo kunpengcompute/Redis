@@ -318,7 +318,7 @@ IPVLAN是一种Linux网络设备驱动，它提供了一种轻量级的方式来
    sudo systemctl restart docker
    ```
 
-3. 创建Docker IPVLAN网络，配置命令参考如下，请按实际情况修改对应参数，详见[表 1 参数说明](#参数说明)。
+3. 创建Docker IPVLAN网络，配置命令参考如下，请按实际情况修改对应参数，详见[表 3 参数说明表](#参数说明)。
 
    ```bash
    docker network create -d ipvlan \
@@ -331,7 +331,7 @@ IPVLAN是一种Linux网络设备驱动，它提供了一种轻量级的方式来
 
    > ![](public\_sys-resources/icon-note.gif) **说明：**
    > 该操作每次环境重启都需要重新配置。
-   > **表 1** 参数说明<a id="参数说明"></a>
+   > **表 3** 参数说明<a id="参数说明"></a>
 
 | 参数           | 说明                                  | 取值                                                                                             |
 | ------------ | ----------------------------------- | ---------------------------------------------------------------------------------------------- |
@@ -439,7 +439,7 @@ IPVLAN是一种Linux网络设备驱动，它提供了一种轻量级的方式来
 
 8. 将Redis中的**src/Redis-7.0.15/feature-patches/0001-adapt-iouring.patch**移到Redis源码目录下，执行合入patch的命令。
    > ![](public\_sys-resources/icon-note.gif) **说明：**
-   > 此处以Redis 7.0.15为例。对于Redis 6.0.20，请将**redis-6.0.20-adapt-iouring.patch**移到Redis源码目录下，再执行合入patch的命令。后续操作中，请注意替换命令中的版本号。
+   > 此处以Redis 7.0.15为例。对于Redis 6.0.20，请将**0001-adapt-iouring.patch**移到Redis源码目录下，再执行合入patch的命令。后续操作中，请注意替换命令中的版本号。
 
    ```bash
    git clone https://gitcode.com/boostkit/Redis.git
@@ -556,7 +556,7 @@ IPVLAN是一种Linux网络设备驱动，它提供了一种轻量级的方式来
 ### 测试功能（主备复制模式）<a name="ZH-CN_TOPIC_0000002549879229"></a>
 
 1. 在Server端环境启动1个Docker容器，按照《[Redis部署指南](https://www.hikunpeng.com/document/detail/zh/kunpengdbs/ecosystemEnable/Redis/kunpengredis_04_0001.html)》中主从复制模式部署的方式部署。
-2. 客户端启动redis\_benchmark进行测试，命令中的`$HOST`需改为服务端的IP地址，`$PORT`改成主Redis的端口号，redis-benchmark替换为实际路径。
+2. 客户端启动redis-benchmark进行测试，命令中的`$HOST`需改为服务端的IP地址，`$PORT`改成主Redis的端口号，redis-benchmark替换为实际路径。
 
    ```bash
    redis-path/src/redis-benchmark -h $HOST -p $PORT -c 200 -n 10000000 -r 10000000 -t set,get --threads 20
@@ -681,6 +681,47 @@ numactl --cpunodebind=$numa_code redis-server --maxmemory 8G --maxmemory-policy 
 numactl --cpunodebind=$numa_code redis-benchmark -h 127.0.0.1 -p $port -P 1 -c $client -d 3 -n 10000000 -r 10000000 -t set,get --threads 20 -q
 ```
 
+#### Redis大包场景零拷贝优化性能测试
+
+测试环境为Redis 7.0.15、100GE网卡和2U8G服务端容器。请先完成前述KRAIO安装和使能，确认客户端可访问服务端容器IP。以下测试仅用于隔离环境，不得对生产实例执行。
+
+`/etc/kraio/kraio.conf`中的`zero_copy`默认值为`1`。基线设置为`0`，优化测试设置为`1`；每次修改后必须停止旧Redis实例，再重新启动，使配置生效。两组测试保持服务器、客户端、CPU绑定、数据大小和并发等条件一致。
+
+1. 在服务端容器中编辑配置，将`zero_copy`设为`0`，然后启动基线实例。CPU 94、95仅为示例，请按容器实际可用CPU替换。
+
+   ```bash
+   vi /etc/kraio/kraio.conf
+   # 修改已有的zero_copy配置项为0并保存
+   cd redis-7.0.15
+   LD_LIBRARY_PATH=/usr/lib64 taskset -c 94,95 src/redis-server redis.conf --save ""
+   ```
+
+2. 在服务端另一终端执行SET准备数据。该步骤不计入GET性能统计。
+
+   ```bash
+   cd redis-7.0.15
+   src/redis-benchmark -h 127.0.0.1 -p 6379 -d 256000 -n 3000000 -r 10000 -t set
+   ```
+
+3. 在两台远端客户端上同时执行GET测试，将服务端容器IP替换为实际地址，分别记录吞吐量。
+
+   ```bash
+   cd redis-7.0.15
+   src/redis-benchmark -h 服务端容器IP -p 6379 -c 500 -n 10000000 -r 10000 -t get --threads 20
+   ```
+
+4. 等待测试结束，在服务端另一终端停止该测试实例；若配置了认证，请相应补充认证参数。
+
+   ```bash
+   src/redis-cli -h 127.0.0.1 -p 6379 shutdown nosave
+   ```
+
+5. 将`zero_copy`改为`1`，重新启动实例，重复步骤2和步骤3。分别对基线和优化配置进行多轮测试，比较两台客户端吞吐量之和的多轮平均值。提升比例为`（优化平均吞吐量－基线平均吞吐量）/基线平均吞吐量×100%`。
+
+上述命令仅验证GET负载，SET仅用于预置数据，不能据此得出SET性能提升结论。本次文档修订未重新进行实机测试，目标环境的性能收益以同负载复测结果为准。
+
+若结果不稳定，请检查网络抓包任务及其他干扰因素，仅在确认不影响业务且获准后停止非必要任务，再按相同条件复测。修改NetworkManager管理策略或重启网络服务可能中断连接，应在隔离环境中另行评估，不作为本测试的默认步骤。
+
 ## 维护特性<a name="ZH-CN_TOPIC_0000002518399374"></a>
 
 ### （可选）取消Bond4<a id="ZH-CN_TOPIC_0000002518399380"></a>
@@ -776,7 +817,7 @@ IPVLAN在Docker中仍然被标记为实验性功能。
 
 ## FAQ<a name="ZH-CN_TOPIC_0000002518239456"></a>
 
-**表 1** Redis网络异步优化常见问题<a id="Redis网络异步优化常见问题"></a>
+**表 4** Redis网络异步优化常见问题<a id="Redis网络异步优化常见问题"></a>
 
 | 序号 | 问题                                                                                                            | 答案                                               |
 | -- | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
@@ -804,7 +845,6 @@ echo 2 >/proc/sys/kernel/randomize_va_space
 
 ## 修订记录
 
-| 发布日期|修订记录|
-| ---------- |----------------------------------------------------- |
-| 2026-06-30 | 第二次正式发布。刷新《Redis网络异步优化 特性指南》，新增Poll功能的使能和本地回环压测场景的操作指导。 |
-| 2025-12-30 | 第一次正式发布。                                                |
+| 文档版本 | 发布日期 | 修改说明 |
+| --- | --- | --- |
+| 01 | 2026-12-30 | 第一次正式发布。 |
